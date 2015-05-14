@@ -22,12 +22,10 @@ see the examples folder of this library distribution.
 */
 
 #include "LCD4Bit_mod.h"
-extern "C" {
-  #include <stdio.h>  //not needed yet
-  #include <string.h> //needed for strlen()
-  #include <inttypes.h>
-  #include "WConstants.h"  //all things wiring / arduino
-}
+#include <stdio.h>  //not needed yet
+#include <string.h> //needed for strlen()
+#include <inttypes.h>
+#include <Arduino.h>  //all things wiring / arduino
 
 //command bytes for LCD
 #define CMD_CLR 0x01
