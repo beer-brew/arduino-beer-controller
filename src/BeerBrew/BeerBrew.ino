@@ -1,70 +1,74 @@
+#include <stdio.h>
 #include <LCD4Bit_mod.h>
+#include <string.h>
+#include <DS1307RTC.h>
+#include <Time.h>
+#include <Wire.h>
+#include <OneWire.h>
+#include <DallasTemperature.h>
 
+// Data wire is plugged into port 2 on the Arduino
+#define ONE_WIRE_BUS 2
+
+// Setup a oneWire instance to communicate with any OneWire devices (not just Maxim/Dallas temperature ICs)
+OneWire oneWire(ONE_WIRE_BUS);
+
+// Pass our oneWire reference to Dallas Temperature. 
+DallasTemperature sensors(&oneWire);
 //create object to control an LCD.
 //number of lines in display=1
 LCD4Bit_mod lcd = LCD4Bit_mod(2);
 
-//Key message
-char msgs[5][15] = {"Right Key OK ", "Up Key OK    ",
-                    "Down Key OK  ", "Left Key OK  ",
-                    "Select Key OK"};
-
-int adc_key_val[5] = {30, 150, 360, 535, 760};
-int NUM_KEYS = 5;
-int adc_key_in;
-int key = -1;
-int oldkey = -1;
 
 void setup() {
+    Serial.begin(9600);
     pinMode(13, OUTPUT);  //we'll use the debug LED to output a heartbeat
-
     lcd.init();
-
     //optionally, now set up our application-specific display settings, overriding whatever the lcd did in lcd.init()
     //lcd.commandWrite(0x0F);//cursor on, display on, blink on.  (nasty!)
     lcd.clear();
-    lcd.printIn("KEYPAD testing... pressing");
+    // Start up the library
+    sensors.begin();   
 }
 
 void loop() {
-    adc_key_in = analogRead(0);    // read the value from the sensor
-
+    tmElements_t tm;
+    float tempvalue;
+    char lcdtime[32] = "";
+    char lcdtemp[16] = "";
+    char test[5] = "1234";
     digitalWrite(13, HIGH);
-
-    key = get_key(adc_key_in);                // convert into key press
-
-    if (key != oldkey)                    // if keypress is detected
-    {
-        delay(50);        // wait for debounce time
-        adc_key_in = analogRead(0);    // read the value from the sensor
-        key = get_key(adc_key_in);                // convert into key press
-
-        if (key != oldkey) {
-            oldkey = key;
-            if (key >= 0) {
-                lcd.cursorTo(2, 0);  //line=2, x=0
-                lcd.printIn(msgs[key]);
-            }
-        }
-    }
-
-    //delay(1000);
-    digitalWrite(13, LOW);
+    if (RTC.read(tm)) {      
+      char *pTime = lcdtime;
+      lcd.cursorTo(1, 0);  //line=1, x=0
+      pTime = build_time_str(pTime, tm.Hour, 2, ':');    
+      pTime = build_time_str(pTime, tm.Minute, 2, ':');
+      pTime = build_time_str(pTime, tm.Second, 2, ' ');         
+      lcd.printIn(lcdtime);
+     }
+     tempvalue = get_temp(sensors);
+     dtostrf(tempvalue, 3, 2, lcdtemp);
+     lcd.cursorTo(2, 0);
+     lcd.printIn(lcdtemp);
+     delay(1000);
+     digitalWrite(13, LOW);
 }
 
-// Convert ADC value to key number
-
-int get_key(unsigned int input) {
-    int k;
-
-    for (k = 0; k < NUM_KEYS; k++) {
-        if (input < adc_key_val[k]) {
-            return k;
-        }
-    }
-
-    if (k >= NUM_KEYS)
-        k = -1;     // No valid key pressed
-
-    return k;
+float get_temp(DallasTemperature sensors)
+{
+  sensors.requestTemperatures(); // Send the command to get temperatures
+  return sensors.getTempCByIndex(0); 
+}
+char* build_time_str(char* p, int value, int length, char sepreator) {
+  int i = 0;
+  if(value < 10 && length == 2){
+      *p = '0';
+      p ++;
+      i ++;
+  }
+  itoa(value, p, 10); 
+  p += (length - i);
+  *p = sepreator;
+  p ++;
+  return p;
 }
