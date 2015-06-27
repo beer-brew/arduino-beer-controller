@@ -30,7 +30,7 @@ int NUM_KEYS = 5;
 int adc_key_in;
 int key = -1;
 int stage = -1;
-int sub_stage = 0;
+int sub_stage = -1;
 int stage0_temp = 68;
 int stage1_temp = 60;
 int stage1_time_h = 1;
@@ -65,7 +65,13 @@ void loop() {
   if(key == 4) //select key
   {
     start_work = 0;
+    sub_stage = 0;
     stage = switch_stage(lcd, stage);
+  }
+  if(key == 3) //select key
+  {
+    start_work = 0;
+    sub_stage = switch_sub_stage(lcd, sub_stage);
   }
   if(key == 1)
   {
@@ -94,7 +100,7 @@ int switch_stage(LCD4Bit_mod lcd, int stage){
   char line2[16];
   switch (stage){
       case -1 :
-      case 5 :
+      case 2 :
         lcd.cursorTo(1, 0);
         lcd.printIn("0                ");
         lcd.cursorTo(2, 0);
@@ -110,7 +116,7 @@ int switch_stage(LCD4Bit_mod lcd, int stage){
         lcd.printIn(line2);
         stage ++;
       break;
-      case 1 :
+      /*case 1 :
         lcd.cursorTo(1, 0);
         sprintf(line1, "1 temp set %d C", stage1_temp);
         lcd.printIn(line1);
@@ -127,8 +133,8 @@ int switch_stage(LCD4Bit_mod lcd, int stage){
         sprintf(line2, "Set time %d:(%d)", stage1_time_h, stage1_time_m);
         lcd.printIn(line2);
         stage ++;
-      break;
-      case 3:
+      break;*/
+      case 1:
         lcd.cursorTo(1, 0);
         lcd.printIn("2                 ");
         lcd.cursorTo(2, 0);
@@ -136,17 +142,71 @@ int switch_stage(LCD4Bit_mod lcd, int stage){
         lcd.printIn(line2);
         stage ++;
       break;
-      case 4:
+      /*case 4:
         lcd.cursorTo(1, 0);
         lcd.printIn("2                ");
         lcd.cursorTo(2, 0);
         sprintf(line2, "Set time %d:(%d)", stage2_time_h, stage2_time_m);
         lcd.printIn(line2);
         stage ++;
-      break;
+      break;*/
     }
     //free line1 and line2
     return stage;
+}
+int switch_sub_stage(LCD4Bit_mod lcd, int sub_stage)
+{
+  char line1[16];
+  char line2[16];
+  switch(sub_stage){
+    case -1 :
+    case 2 :
+      if(stage == 1){
+        lcd.cursorTo(1, 0);
+        lcd.printIn("1                ");
+        lcd.cursorTo(2, 0);
+        sprintf(line2, "Set temp %d C  ", stage1_temp);
+        lcd.printIn(line2);             
+      }else if(stage == 2){
+        lcd.cursorTo(1, 0);
+        lcd.printIn("2                 ");
+        lcd.cursorTo(2, 0);
+        sprintf(line2, "Set time (%d):%d", stage2_time_h, stage2_time_m);
+        lcd.printIn(line2);
+      }
+      sub_stage = 0;
+    break;   
+    case 0 :
+      if(stage == 1){      
+        lcd.cursorTo(1, 0);
+        sprintf(line1, "1 temp set %d C", stage1_temp);
+        lcd.printIn(line1);
+        lcd.cursorTo(2, 0);
+        sprintf(line2, "Set time (%d):%d", stage1_time_h, stage1_time_m);
+        lcd.printIn(line2);
+        sub_stage ++;
+      }else if(stage == 2){
+        lcd.cursorTo(1, 0);
+        lcd.printIn("2                ");
+        lcd.cursorTo(2, 0);
+        sprintf(line2, "Set time %d:(%d)", stage2_time_h, stage2_time_m);
+        lcd.printIn(line2);
+        sub_stage += 2;
+      }
+    break;
+    case 1 :
+      if(stage == 1){
+        lcd.cursorTo(1, 0);
+        sprintf(line1, "1 temp set %d C", stage1_temp);
+        lcd.printIn(line1);
+        lcd.cursorTo(2, 0);
+        sprintf(line2, "Set time %d:(%d)", stage1_time_h, stage1_time_m);
+        lcd.printIn(line2);
+        sub_stage ++; 
+      }
+    break;
+  }
+  return sub_stage;
 }
 void setting(int plus_minus)
 {
@@ -162,45 +222,46 @@ void setting(int plus_minus)
         lcd.printIn(line2);
       break;
       case 1 :
-        stage1_temp += (1 * plus_minus);
-        stage1_temp = stage1_temp > 100 ? 100 : stage1_temp;
-        stage1_temp = stage1_temp < 0 ? 0 : stage1_temp;
-        lcd.cursorTo(2, 0);
-        sprintf(line2, "Set temp %d C", stage1_temp);
-        lcd.printIn(line2);
-      break;
+        if(sub_stage == 0) {
+          stage1_temp += (1 * plus_minus);
+          stage1_temp = stage1_temp > 100 ? 100 : stage1_temp;
+          stage1_temp = stage1_temp < 0 ? 0 : stage1_temp;
+          lcd.cursorTo(2, 0);
+          sprintf(line2, "Set temp %d C", stage1_temp);
+          lcd.printIn(line2);
+        }else if(sub_stage == 1){
+          stage1_time_h += (1 * plus_minus);
+          stage1_time_h = stage1_time_h > 99 ? 99 : stage1_time_h;
+          stage1_time_h = stage1_time_h < 0 ? 0 : stage1_time_h; 
+          lcd.cursorTo(2, 0);
+          sprintf(line2, "Set time (%d):%d", stage1_time_h, stage1_time_m);
+          lcd.printIn(line2);
+        }else if(sub_stage == 2){
+          stage1_time_m += (15 * plus_minus);
+          stage1_time_m = stage1_time_m == 60 ? 0 : stage1_time_m;
+          stage1_time_m = stage1_time_m < 0 ? 0 : stage1_time_m;
+          lcd.cursorTo(2, 0);
+          sprintf(line2, "Set time %d:(%d)", stage1_time_h, stage1_time_m);
+          lcd.printIn(line2);
+        }
+        break;
       case 2 :
-        stage1_time_h += (1 * plus_minus);
-        stage1_time_h = stage1_time_h > 99 ? 99 : stage1_time_h;
-        stage1_time_h = stage1_time_h < 0 ? 0 : stage1_time_h; 
-        lcd.cursorTo(2, 0);
-        sprintf(line2, "Set time (%d):%d", stage1_time_h, stage1_time_m);
-        lcd.printIn(line2);
-      break;
-      case 3:
-        stage1_time_m += (15 * plus_minus);
-        stage1_time_m = stage1_time_m == 60 ? 0 : stage1_time_m;
-        stage1_time_m = stage1_time_m < 0 ? 0 : stage1_time_m;
-        lcd.cursorTo(2, 0);
-        sprintf(line2, "Set time %d:(%d)", stage1_time_h, stage1_time_m);
-        lcd.printIn(line2);
-      break;
-      case 4:
-        stage2_time_h += (1 * plus_minus);
-        stage2_time_h = stage2_time_h > 99 ? 99 : stage2_time_h;
-        stage2_time_h = stage2_time_h < 0 ? 0 : stage2_time_h; 
-        lcd.cursorTo(2, 0);
-        sprintf(line2, "Set time (%d):%d", stage2_time_h, stage2_time_m);
-        lcd.printIn(line2);
-       break;
-      case 5:
-        stage2_time_m += (15 * plus_minus);
-        stage2_time_m = stage2_time_m == 60 ? 0 : stage2_time_m;
-        stage2_time_m = stage2_time_m < 0 ? 0 : stage2_time_m;
-        lcd.cursorTo(2, 0);
-        sprintf(line2, "Set time %d:(%d)", stage2_time_h, stage2_time_m);
-        lcd.printIn(line2);
-       break;
+        if(sub_stage == 0){
+          stage2_time_h += (1 * plus_minus);
+          stage2_time_h = stage2_time_h > 99 ? 99 : stage2_time_h;
+          stage2_time_h = stage2_time_h < 0 ? 0 : stage2_time_h; 
+          lcd.cursorTo(2, 0);
+          sprintf(line2, "Set time (%d):%d", stage2_time_h, stage2_time_m);
+          lcd.printIn(line2);
+        }else if(sub_stage == 2){
+          stage2_time_m += (15 * plus_minus);
+          stage2_time_m = stage2_time_m == 60 ? 0 : stage2_time_m;
+          stage2_time_m = stage2_time_m < 0 ? 0 : stage2_time_m;
+          lcd.cursorTo(2, 0);
+          sprintf(line2, "Set time %d:(%d)", stage2_time_h, stage2_time_m);
+          lcd.printIn(line2);
+        }
+        break;
     }
 }
 void work()
@@ -233,8 +294,6 @@ void work()
         templimit = (float) stage0_temp;
       break;
       case 1 :
-      case 2 :
-      case 3 :
         lcd.cursorTo(1, 0);
         dtostrf(tempvalue, 3, 2, lcdtemp);
         sprintf(line1, "s:1 %sC->%dC", lcdtemp, stage1_temp);
@@ -244,8 +303,7 @@ void work()
         lcd.printIn(line2);
         templimit = (float) stage1_temp;
       break;
-      case 4 :
-      case 5 :
+      case 2 :
         lcd.cursorTo(1, 0);
         dtostrf(tempvalue, 3, 2, lcdtemp);
         sprintf(line1, "s:2 %sC->%dC", lcdtemp, stage2_temp);
