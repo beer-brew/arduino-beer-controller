@@ -20,11 +20,6 @@ DallasTemperature sensors(&oneWire);
 //create object to control an LCD.
 //number of lines in display=1
 LCD4Bit_mod lcd = LCD4Bit_mod(2);
-char msgs[5][15] = {"Right Key OK ", 
-                    "Up Key OK    ", 
-                    "Down Key OK  ", 
-                    "Left Key OK  ", 
-                    "Select Key OK" };
 int  adc_key_val[5] ={30, 150, 360, 535, 760 };
 int NUM_KEYS = 5;
 int adc_key_in;
@@ -116,24 +111,6 @@ int switch_stage(LCD4Bit_mod lcd, int stage){
         lcd.printIn(line2);
         stage ++;
       break;
-      /*case 1 :
-        lcd.cursorTo(1, 0);
-        sprintf(line1, "1 temp set %d C", stage1_temp);
-        lcd.printIn(line1);
-        lcd.cursorTo(2, 0);
-        sprintf(line2, "Set time (%d):%d", stage1_time_h, stage1_time_m);
-        lcd.printIn(line2);
-        stage ++;
-      break;
-      case 2 :
-        lcd.cursorTo(1, 0);
-        sprintf(line1, "1 temp set %d C", stage1_temp);
-        lcd.printIn(line1);
-        lcd.cursorTo(2, 0);
-        sprintf(line2, "Set time %d:(%d)", stage1_time_h, stage1_time_m);
-        lcd.printIn(line2);
-        stage ++;
-      break;*/
       case 1:
         lcd.cursorTo(1, 0);
         lcd.printIn("2                 ");
@@ -142,16 +119,7 @@ int switch_stage(LCD4Bit_mod lcd, int stage){
         lcd.printIn(line2);
         stage ++;
       break;
-      /*case 4:
-        lcd.cursorTo(1, 0);
-        lcd.printIn("2                ");
-        lcd.cursorTo(2, 0);
-        sprintf(line2, "Set time %d:(%d)", stage2_time_h, stage2_time_m);
-        lcd.printIn(line2);
-        stage ++;
-      break;*/
     }
-    //free line1 and line2
     return stage;
 }
 int switch_sub_stage(LCD4Bit_mod lcd, int sub_stage)
