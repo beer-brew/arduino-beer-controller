@@ -289,13 +289,13 @@ void work()
     }
     
     if (tempvalue > templimit) {
-      digitalWrite(PIN_RELAY1, LOW);
-    } else {
       digitalWrite(PIN_RELAY1, HIGH);
+    } else {
+      digitalWrite(PIN_RELAY1, LOW);
     }
     left_time = (tm.Hour - start_tm.Hour) * 3600 + (tm.Minute - start_tm.Minute) * 60 + pass_second;
     if(stage == 1 && left_time <= 0 ){
-      digitalWrite(PIN_RELAY1, LOW);
+      digitalWrite(PIN_RELAY1, HIGH);
     }
 }
 
