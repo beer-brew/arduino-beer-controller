@@ -305,7 +305,7 @@ void work()
         digitalWrite(PIN_RELAY1, HIGH);
       }
     }
-    sprintf(log, "%d    %02d:%02d:%02d    %s    %s", stage, tm.Hour, tm.Minute, tm.Second, lcdtemp, (digitalRead(PIN_RELAY1) == LOW) ? "On" : "Off");
+    sprintf(log, "%d\t%02d:%02d:%02d\t%d\t%s\t%s", stage, tm.Hour, tm.Minute, tm.Second, pass_time, lcdtemp, (digitalRead(PIN_RELAY1) == LOW) ? "On" : "Off");
     Serial.println(log);  
 }
 
