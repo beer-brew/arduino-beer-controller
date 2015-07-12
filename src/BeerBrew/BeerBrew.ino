@@ -40,7 +40,8 @@ void setup() {
     Serial.begin(9600);
     pinMode(13, OUTPUT);  //we'll use the debug LED to output a heartbeat
     pinMode(PIN_RELAY1, OUTPUT);
-    
+    pinMode(PIN_RELAY2, OUTPUT);
+    digitalWrite(PIN_RELAY1, HIGH);
     lcd.init();
     //optionally, now set up our application-specific display settings, overriding whatever the lcd did in lcd.init()
     //lcd.commandWrite(0x0F);//cursor on, display on, blink on.  (nasty!)
@@ -56,7 +57,6 @@ void loop() {
   adc_key_in = analogRead(0);    // read the value from the sensor  
   digitalWrite(13, HIGH);  
   key = get_key(adc_key_in);    // convert into key press
-  Serial.println(key);
   if(key == 4) //select key
   {
     start_work = 0;
@@ -206,7 +206,7 @@ void setting(int plus_minus)
           sprintf(line2, "Set time (%02d):%02d", stage1_time_h, stage1_time_m);
           lcd.printIn(line2);
         }else if(sub_stage == 2){
-          stage1_time_m += (15 * plus_minus);
+          stage1_time_m += (1 * plus_minus);
           stage1_time_m = stage1_time_m == 60 ? 0 : stage1_time_m;
           stage1_time_m = stage1_time_m < 0 ? 0 : stage1_time_m;
           lcd.cursorTo(2, 0);
@@ -240,13 +240,16 @@ void work()
     float templimit;
     char lcdtime[32] = "";
     char lcdtemp[16] = "";
-    int pass_second;
     int left_time;
+    int pass_hour;
+    int pass_minute;
+    int pass_second;
+    char log[64] = "";
     if (RTC.read(tm)) 
     {
       char *pTime = lcdtime;
       pTime = build_time_str(pTime, (tm.Hour - start_tm.Hour), 2, ':');    
-      pTime = build_time_str(pTime, (tm.Minute - start_tm.Minute), 2, ':');
+      pTime = build_time_str(pTime, tm.Minute - start_tm.Minute , 2, ':');
       pass_second = (tm.Second - start_tm.Second) >= 0 ? (tm.Second - start_tm.Second) : 60 + (tm.Second - start_tm.Second); 
       pTime = build_time_str(pTime, pass_second, 2, ' ');     
     }
@@ -279,7 +282,6 @@ void work()
         lcd.cursorTo(1, 0);
         dtostrf(tempvalue, 3, 2, lcdtemp);
         sprintf(line1, "s:2 %sC->%02dC", lcdtemp, stage2_temp);
-        lcd.printIn(lcdtemp);
         lcd.printIn(line1);
         lcd.cursorTo(2, 0);
         lcd.printIn(lcdtime);
@@ -287,16 +289,24 @@ void work()
         templimit = (float) stage2_temp;
       break;      
     }
-    
     if (tempvalue > templimit) {
       digitalWrite(PIN_RELAY1, HIGH);
     } else {
       digitalWrite(PIN_RELAY1, LOW);
     }
-    left_time = (tm.Hour - start_tm.Hour) * 3600 + (tm.Minute - start_tm.Minute) * 60 + pass_second;
-    if(stage == 1 && left_time <= 0 ){
-      digitalWrite(PIN_RELAY1, HIGH);
+    if(stage == 1){
+      int pass_time;
+      int set_time;
+      pass_time = (tm.Hour - start_tm.Hour) * 3600 + (tm.Minute - start_tm.Minute) * 60 + (tm.Second - start_tm.Second);
+      set_time = stage1_time_h * 3600 + stage1_time_m * 60;
+      left_time = set_time - pass_time;
+      if(left_time <= 0)
+      {  
+        digitalWrite(PIN_RELAY1, HIGH);
+      }
     }
+    sprintf(log, "%d    %02d:%02d:%02d    %s    %s", stage, tm.Hour, tm.Minute, tm.Second, lcdtemp, (digitalRead(PIN_RELAY1) == LOW) ? "On" : "Off");
+    Serial.println(log);  
 }
 
 float get_temp(DallasTemperature sensors)
