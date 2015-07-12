@@ -244,6 +244,7 @@ void work()
     int pass_hour;
     int pass_minute;
     int pass_second;
+    int pass_time;
     char log[64] = "";
     if (RTC.read(tm)) 
     {
@@ -295,7 +296,6 @@ void work()
       digitalWrite(PIN_RELAY1, LOW);
     }
     if(stage == 1){
-      int pass_time;
       int set_time;
       pass_time = (tm.Hour - start_tm.Hour) * 3600 + (tm.Minute - start_tm.Minute) * 60 + (tm.Second - start_tm.Second);
       set_time = stage1_time_h * 3600 + stage1_time_m * 60;
