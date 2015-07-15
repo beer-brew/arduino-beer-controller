@@ -240,18 +240,22 @@ void work()
     float templimit;
     char lcdtime[32] = "";
     char lcdtemp[16] = "";
-    int left_time;
+    int set_time;
     int pass_hour;
     int pass_minute;
     int pass_second;
+    int pass_time;
     char log[64] = "";
     if (RTC.read(tm)) 
     {
       char *pTime = lcdtime;
-      pTime = build_time_str(pTime, (tm.Hour - start_tm.Hour), 2, ':');    
-      pTime = build_time_str(pTime, tm.Minute - start_tm.Minute , 2, ':');
-      pass_second = (tm.Second - start_tm.Second) >= 0 ? (tm.Second - start_tm.Second) : 60 + (tm.Second - start_tm.Second); 
-      pTime = build_time_str(pTime, pass_second, 2, ' ');     
+      pass_time = (tm.Hour - start_tm.Hour) * 3600 + (tm.Minute - start_tm.Minute) * 60 + (tm.Second - start_tm.Second);
+      pass_hour = floor(pass_time / 3600);
+      pass_minute = floor((pass_time - (pass_hour * 3600)) / 60);
+      pass_second = pass_time - pass_hour * 3600 - pass_minute * 60;
+      pTime = build_time_str(pTime, pass_hour, 2, ':');
+      pTime = build_time_str(pTime, pass_minute , 2, ':');
+      pTime = build_time_str(pTime, pass_second, 2, ' ');
     }
      
     tempvalue = get_temp(sensors);
@@ -295,17 +299,13 @@ void work()
       digitalWrite(PIN_RELAY1, LOW);
     }
     if(stage == 1){
-      int pass_time;
-      int set_time;
-      pass_time = (tm.Hour - start_tm.Hour) * 3600 + (tm.Minute - start_tm.Minute) * 60 + (tm.Second - start_tm.Second);
       set_time = stage1_time_h * 3600 + stage1_time_m * 60;
-      left_time = set_time - pass_time;
-      if(left_time <= 0)
+      if(set_time - pass_time <= 0)
       {  
         digitalWrite(PIN_RELAY1, HIGH);
       }
     }
-    sprintf(log, "%d    %02d:%02d:%02d    %s    %s", stage, tm.Hour, tm.Minute, tm.Second, lcdtemp, (digitalRead(PIN_RELAY1) == LOW) ? "On" : "Off");
+    sprintf(log, "%d\t%02d:%02d:%02d\t%d\t%s\t%s", stage, tm.Hour, tm.Minute, tm.Second, pass_time, lcdtemp, (digitalRead(PIN_RELAY1) == LOW) ? "On" : "Off");
     Serial.println(log);  
 }
 
