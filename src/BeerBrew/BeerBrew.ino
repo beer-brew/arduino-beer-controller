@@ -30,9 +30,10 @@ int stage0_temp = 68;
 int stage1_temp = 60;
 int stage1_time_h = 1;
 int stage1_time_m = 15;
-int stage2_time_h = 1;
-int stage2_time_m = 15;
-int stage2_temp = 100;
+int stage2_temp = 75;
+int stage3_time_h = 1;
+int stage3_time_m = 15;
+int stage3_temp = 100;
 int start_work = 0;
 tmElements_t start_tm;
 
@@ -43,8 +44,6 @@ void setup() {
     pinMode(PIN_RELAY2, OUTPUT);
     digitalWrite(PIN_RELAY1, HIGH);
     lcd.init();
-    //optionally, now set up our application-specific display settings, overriding whatever the lcd did in lcd.init()
-    //lcd.commandWrite(0x0F);//cursor on, display on, blink on.  (nasty!)
     lcd.clear();
     // Start up the library
     sensors.begin(); 
@@ -96,7 +95,7 @@ int switch_stage(LCD4Bit_mod lcd, int stage){
   char line2[16];
   switch (stage){
       case -1 :
-      case 2 :
+      case 3 :
         lcd.cursorTo(1, 0);
         lcd.printIn("0                ");
         lcd.cursorTo(2, 0);
@@ -116,7 +115,15 @@ int switch_stage(LCD4Bit_mod lcd, int stage){
         lcd.cursorTo(1, 0);
         lcd.printIn("2                 ");
         lcd.cursorTo(2, 0);
-        sprintf(line2, "Set time (%02d):%02d", stage2_time_h, stage2_time_m);
+        sprintf(line2, "Set temp %02d C   ", stage2_temp);
+        lcd.printIn(line2);
+        stage ++;
+      break;
+      case 2:
+        lcd.cursorTo(1, 0);
+        lcd.printIn("3                 ");
+        lcd.cursorTo(2, 0);
+        sprintf(line2, "Set time (%02d):%02d", stage3_time_h, stage3_time_m);
         lcd.printIn(line2);
         stage ++;
       break;
@@ -136,11 +143,11 @@ int switch_sub_stage(LCD4Bit_mod lcd, int sub_stage)
         lcd.cursorTo(2, 0);
         sprintf(line2, "Set temp %02d C   ", stage1_temp);
         lcd.printIn(line2);             
-      }else if(stage == 2){
+      }else if(stage == 3){
         lcd.cursorTo(1, 0);
-        lcd.printIn("2                 ");
+        lcd.printIn("3                 ");
         lcd.cursorTo(2, 0);
-        sprintf(line2, "Set time (%02d):%02d", stage2_time_h, stage2_time_m);
+        sprintf(line2, "Set time (%02d):%02d", stage3_time_h, stage3_time_m);
         lcd.printIn(line2);
       }
       sub_stage = 0;
@@ -154,11 +161,11 @@ int switch_sub_stage(LCD4Bit_mod lcd, int sub_stage)
         sprintf(line2, "Set time (%02d):%02d  ", stage1_time_h, stage1_time_m);
         lcd.printIn(line2);
         sub_stage ++;
-      }else if(stage == 2){
+      }else if(stage == 3){
         lcd.cursorTo(1, 0);
-        lcd.printIn("2                ");
+        lcd.printIn("3                ");
         lcd.cursorTo(2, 0);
-        sprintf(line2, "Set time %02d:(%02d)  ", stage2_time_h, stage2_time_m);
+        sprintf(line2, "Set time %02d:(%02d)  ", stage3_time_h, stage3_time_m);
         lcd.printIn(line2);
         sub_stage += 2;
       }
@@ -215,19 +222,27 @@ void setting(int plus_minus)
         }
         break;
       case 2 :
+        stage2_temp += (1 * plus_minus);
+        stage2_temp = stage2_temp > 100 ? 100 : stage2_temp;
+        stage2_temp = stage2_temp < 0 ? 0 : stage2_temp;
+        lcd.cursorTo(2, 0);      
+        sprintf(line2, "Set temp %02d C", stage2_temp);
+        lcd.printIn(line2);
+      break;
+      case 3 :
         if(sub_stage == 0){
-          stage2_time_h += (1 * plus_minus);
-          stage2_time_h = stage2_time_h > 99 ? 99 : stage2_time_h;
-          stage2_time_h = stage2_time_h < 0 ? 0 : stage2_time_h; 
+          stage3_time_h += (1 * plus_minus);
+          stage3_time_h = stage3_time_h > 99 ? 99 : stage3_time_h;
+          stage3_time_h = stage3_time_h < 0 ? 0 : stage3_time_h; 
           lcd.cursorTo(2, 0);
-          sprintf(line2, "Set time (%02d):%02d", stage2_time_h, stage2_time_m);
+          sprintf(line2, "Set time (%02d):%02d", stage3_time_h, stage3_time_m);
           lcd.printIn(line2);
         }else if(sub_stage == 2){
-          stage2_time_m += (15 * plus_minus);
-          stage2_time_m = stage2_time_m == 60 ? 0 : stage2_time_m;
-          stage2_time_m = stage2_time_m < 0 ? 0 : stage2_time_m;
+          stage3_time_m += (15 * plus_minus);
+          stage3_time_m = stage3_time_m == 60 ? 0 : stage3_time_m;
+          stage3_time_m = stage3_time_m < 0 ? 0 : stage3_time_m;
           lcd.cursorTo(2, 0);
-          sprintf(line2, "Set time %02d:(%02d)", stage2_time_h, stage2_time_m);
+          sprintf(line2, "Set time %02d:(%02d)", stage3_time_h, stage3_time_m);
           lcd.printIn(line2);
         }
         break;
@@ -291,6 +306,16 @@ void work()
         lcd.printIn(lcdtime);
         lcd.printIn("        ");
         templimit = (float) stage2_temp;
+      break;
+      case 3 :
+        lcd.cursorTo(1, 0);
+        dtostrf(tempvalue, 3, 2, lcdtemp);
+        sprintf(line1, "s:3 %sC->%02dC", lcdtemp, stage3_temp);
+        lcd.printIn(line1);
+        lcd.cursorTo(2, 0);
+        lcd.printIn(lcdtime);
+        lcd.printIn("        ");
+        templimit = (float) stage3_temp;
       break;      
     }
     if (tempvalue > templimit) {
@@ -303,6 +328,8 @@ void work()
       if(set_time - pass_time <= 0)
       {  
         digitalWrite(PIN_RELAY1, HIGH);
+        stage = 2;
+        RTC.read(start_tm);
       }
     }
     sprintf(log, "%d\t%02d:%02d:%02d\t%d\t%s\t%s", stage, tm.Hour, tm.Minute, tm.Second, pass_time, lcdtemp, (digitalRead(PIN_RELAY1) == LOW) ? "On" : "Off");
