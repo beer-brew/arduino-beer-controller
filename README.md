@@ -3,6 +3,9 @@
 This is a actually a arduino project, we build simple arduino device to control temperature of water and this is almost what we need when brewing beer.
 
 Hardware parts:
+
+![Pins](./docs/pins.png)
+
 - arduino
   [arduino doc](https://www.arduino.cc/en/reference/board)
   [arduino pins](./docs/arduino_board.png)
