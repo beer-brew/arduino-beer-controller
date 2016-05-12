@@ -37,57 +37,40 @@ int stage3_temp = 100;
 int start_work = 0;
 tmElements_t start_tm;
 
-void setup() {
-    Serial.begin(9600);
-    pinMode(13, OUTPUT);  //we'll use the debug LED to output a heartbeat
-    pinMode(PIN_RELAY1, OUTPUT);
-    pinMode(PIN_RELAY2, OUTPUT);
-    digitalWrite(PIN_RELAY1, HIGH);
-    lcd.init();
-    lcd.clear();
-    // Start up the library
-    sensors.begin(); 
-    
-    lcd.cursorTo(1, 0);
-    lcd.printIn("beer brew");
+// Convert ADC value to key number
+int get_key(unsigned int input)
+{
+  int k;
+  for (k = 0; k < NUM_KEYS; k++)
+  {
+    if (input < adc_key_val[k]){     
+      return k;
+    }
+  }
+  if (k >= NUM_KEYS)
+  {
+    k = -1;     // No valid key pressed
+  }
+  return k;
 }
 
-void loop() {
-  adc_key_in = analogRead(0);    // read the value from the sensor  
-  digitalWrite(13, HIGH);  
-  key = get_key(adc_key_in);    // convert into key press
-  if(key == 4) //select key
-  {
-    start_work = 0;
-    sub_stage = 0;
-    stage = switch_stage(lcd, stage);
+float get_temp(DallasTemperature sensors)
+{
+  sensors.requestTemperatures(); // Send the command to get temperatures
+  return sensors.getTempCByIndex(0); 
+}
+char* build_time_str(char* p, int value, int length, char sepreator) {
+  int i = 0;
+  if(value < 10 && length == 2){
+      *p = '0';
+      p ++;
+      i ++;
   }
-  if(key == 3) //select key
-  {
-    start_work = 0;
-    sub_stage = switch_sub_stage(lcd, sub_stage);
-  }
-  if(key == 1)
-  {
-    setting(1);
-  }
-  if(key == 2)
-  {
-    setting(-1);
-  }
-  
-  if(key == 0)
-  {
-    start_work = 1;
-    RTC.read(start_tm);
-  }
-  
-  if(start_work == 1)
-  {
-    work();
-  }
-  //delay(1000);
-  digitalWrite(13, LOW);
+  itoa(value, p, 10); 
+  p += (length - i);
+  *p = sepreator;
+  p ++;
+  return p;
 }
 
 int switch_stage(LCD4Bit_mod lcd, int stage){  
@@ -130,6 +113,7 @@ int switch_stage(LCD4Bit_mod lcd, int stage){
     }
     return stage;
 }
+
 int switch_sub_stage(LCD4Bit_mod lcd, int sub_stage)
 {
   char line1[16];
@@ -184,6 +168,9 @@ int switch_sub_stage(LCD4Bit_mod lcd, int sub_stage)
   }
   return sub_stage;
 }
+
+
+
 void setting(int plus_minus)
 {
   char line1[16];
@@ -248,6 +235,7 @@ void setting(int plus_minus)
         break;
     }
 }
+
 void work()
 {
     tmElements_t tm;
@@ -336,37 +324,57 @@ void work()
     Serial.println(log);  
 }
 
-float get_temp(DallasTemperature sensors)
-{
-  sensors.requestTemperatures(); // Send the command to get temperatures
-  return sensors.getTempCByIndex(0); 
+
+void setup() {
+    Serial.begin(9600);
+    pinMode(13, OUTPUT);  //we'll use the debug LED to output a heartbeat
+    pinMode(PIN_RELAY1, OUTPUT);
+    pinMode(PIN_RELAY2, OUTPUT);
+    digitalWrite(PIN_RELAY1, HIGH);
+    lcd.init();
+    lcd.clear();
+    // Start up the library
+    sensors.begin(); 
+    
+    lcd.cursorTo(1, 0);
+    lcd.printIn("beer brew");
 }
-char* build_time_str(char* p, int value, int length, char sepreator) {
-  int i = 0;
-  if(value < 10 && length == 2){
-      *p = '0';
-      p ++;
-      i ++;
-  }
-  itoa(value, p, 10); 
-  p += (length - i);
-  *p = sepreator;
-  p ++;
-  return p;
-}
-// Convert ADC value to key number
-int get_key(unsigned int input)
-{
-  int k;
-  for (k = 0; k < NUM_KEYS; k++)
+
+void loop() {
+  adc_key_in = analogRead(0);    // read the value from the sensor  
+  digitalWrite(13, HIGH);  
+  key = get_key(adc_key_in);    // convert into key press
+  if(key == 4) //select key
   {
-    if (input < adc_key_val[k]){     
-      return k;
-    }
+    start_work = 0;
+    sub_stage = 0;
+    stage = switch_stage(lcd, stage);
   }
-  if (k >= NUM_KEYS)
+  if(key == 3) //select key
   {
-    k = -1;     // No valid key pressed
+    start_work = 0;
+    sub_stage = switch_sub_stage(lcd, sub_stage);
   }
-  return k;
+  if(key == 1)
+  {
+    setting(1);
+  }
+  if(key == 2)
+  {
+    setting(-1);
+  }
+  
+  if(key == 0)
+  {
+    start_work = 1;
+    RTC.read(start_tm);
+  }
+  
+  if(start_work == 1)
+  {
+    work();
+  }
+  //delay(1000);
+  digitalWrite(13, LOW);
 }
+
