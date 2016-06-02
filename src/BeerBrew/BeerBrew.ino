@@ -22,7 +22,6 @@ DallasTemperature sensors(&oneWire);
 LCD4Bit_mod lcd = LCD4Bit_mod(2);
 int  adc_key_val[5] ={30, 150, 360, 535, 760 };
 int NUM_KEYS = 5;
-int adc_key_in;
 int key = -1;
 int stage = -1;
 int sub_stage = -1;
@@ -35,29 +34,56 @@ int stage3_time_h = 1;
 int stage3_time_m = 15;
 int stage3_temp = 100;
 int start_work = 0;
+float last_temp = 0;
 tmElements_t start_tm;
 
-// Convert ADC value to key number
-int get_key(unsigned int input)
+
+int convert_key(unsigned int input)
 {
   int k;
   for (k = 0; k < NUM_KEYS; k++)
   {
-    if (input < adc_key_val[k]){     
+    if (input < adc_key_val[k])
+    {     
       return k;
     }
   }
   if (k >= NUM_KEYS)
   {
-    k = -1;     // No valid key pressed
+    return -1;     // No valid key pressed
   }
-  return k;
+}
+
+// Convert ADC value to key number
+int get_key()
+{
+  unsigned int input;
+  int key;
+  input = analogRead(0);    // read the value from the sensor  
+  key = convert_key(input);
+  delay(10);
+  input = analogRead(0);    // read the value from the sensor  
+  int key1 = convert_key(input);
+  if (key == key1)
+  {
+    return key;
+  }
+  else
+  {
+    return -1;
+  }
 }
 
 float get_temp(DallasTemperature sensors)
 {
   sensors.requestTemperatures(); // Send the command to get temperatures
-  return sensors.getTempCByIndex(0); 
+  float temp = sensors.getTempCByIndex(0);
+  if (temp > 100 || temp < 0) {
+    return last_temp;
+  } else {
+    last_temp = temp;
+    return temp;
+  }
 }
 char* build_time_str(char* p, int value, int length, char sepreator) {
   int i = 0;
@@ -341,9 +367,8 @@ void setup() {
 }
 
 void loop() {
-  adc_key_in = analogRead(0);    // read the value from the sensor  
   digitalWrite(13, HIGH);  
-  key = get_key(adc_key_in);    // convert into key press
+  key = get_key();    // convert into key press
   if(key == 4) //select key
   {
     start_work = 0;
