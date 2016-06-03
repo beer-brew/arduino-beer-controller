@@ -33,6 +33,7 @@ int stage2_temp = 75;
 int stage3_time_h = 1;
 int stage3_time_m = 15;
 int stage3_temp = 100;
+int stage4_temp = 25;
 int start_work = 0;
 float last_temp = 0;
 tmElements_t start_tm;
@@ -104,7 +105,7 @@ int switch_stage(LCD4Bit_mod lcd, int stage){
   char line2[16];
   switch (stage){
       case -1 :
-      case 3 :
+      case 4:
         lcd.cursorTo(1, 0);
         lcd.printIn("0                ");
         lcd.cursorTo(2, 0);
@@ -136,6 +137,15 @@ int switch_stage(LCD4Bit_mod lcd, int stage){
         lcd.printIn(line2);
         stage ++;
       break;
+      case 3 :
+        lcd.cursorTo(1, 0);
+        lcd.printIn("4                ");
+        lcd.cursorTo(2, 0);
+        sprintf(line2, "Set temp %02d C   ", stage4_temp);
+        lcd.printIn(line2);
+        stage ++;
+      break;
+
     }
     return stage;
 }
@@ -259,6 +269,14 @@ void setting(int plus_minus)
           lcd.printIn(line2);
         }
         break;
+      case 4 :
+        stage4_temp += (1 * plus_minus);
+        stage4_temp = stage4_temp > 100 ? 100 : stage4_temp;
+        stage4_temp = stage4_temp < 0 ? 0 : stage4_temp;
+        lcd.cursorTo(2, 0);      
+        sprintf(line2, "Set temp %02d C", stage4_temp);
+        lcd.printIn(line2);
+      break;
     }
 }
 
@@ -331,6 +349,27 @@ void work()
         lcd.printIn("        ");
         templimit = (float) stage3_temp;
       break;      
+     case 4:
+        lcd.cursorTo(1, 0);
+        dtostrf(tempvalue, 3, 2, lcdtemp);
+        sprintf(line1, "s:4 %sC->%02dC", lcdtemp, stage4_temp);
+        lcd.printIn(line1);
+        lcd.cursorTo(2, 0);
+        lcd.printIn("Freezing ");
+        templimit = (float) stage4_temp;
+      break;      
+    }
+    // todo: hard code stage4 logic here
+    if (stage == 4)
+    {
+      if (tempvalue < templimit) {
+        digitalWrite(PIN_RELAY1, HIGH);
+      } else {
+        digitalWrite(PIN_RELAY1, LOW);
+      }
+      sprintf(log, "freezeing, tempvalue: %sC relay: \t%s", lcdtemp, (digitalRead(PIN_RELAY1) == LOW) ? "On" : "Off");
+      Serial.println(log);
+      return;
     }
     if (tempvalue > templimit) {
       digitalWrite(PIN_RELAY1, HIGH);
@@ -347,7 +386,7 @@ void work()
       }
     }
     sprintf(log, "%d\t%02d:%02d:%02d\t%d\t%s\t%s", stage, tm.Hour, tm.Minute, tm.Second, pass_time, lcdtemp, (digitalRead(PIN_RELAY1) == LOW) ? "On" : "Off");
-    Serial.println(log);  
+    Serial.println(log);
 }
 
 
@@ -361,7 +400,7 @@ void setup() {
     lcd.clear();
     // Start up the library
     sensors.begin(); 
-    
+
     lcd.cursorTo(1, 0);
     lcd.printIn("beer brew");
 }
@@ -369,13 +408,13 @@ void setup() {
 void loop() {
   digitalWrite(13, HIGH);  
   key = get_key();    // convert into key press
-  if(key == 4) //select key
+  if(key == 4) //select stage
   {
     start_work = 0;
     sub_stage = 0;
     stage = switch_stage(lcd, stage);
   }
-  if(key == 3) //select key
+  if(key == 3) //select sub stage
   {
     start_work = 0;
     sub_stage = switch_sub_stage(lcd, sub_stage);
