@@ -23,6 +23,7 @@ LCD4Bit_mod lcd = LCD4Bit_mod(2);
 int  adc_key_val[5] ={30, 150, 360, 535, 760 };
 int NUM_KEYS = 5;
 int key = -1;
+boolean relay = false;
 int stage = -1;
 int sub_stage = -1;
 int stage0_temp = 68;
@@ -359,22 +360,45 @@ void work()
         templimit = (float) stage4_temp;
       break;      
     }
+    float limit = templimit;
     // todo: hard code stage4 logic here
     if (stage == 4)
     {
-      if (tempvalue < templimit) {
-        digitalWrite(PIN_RELAY1, HIGH);
-      } else {
-        digitalWrite(PIN_RELAY1, LOW);
+      limit = relay ? limit - 0.5 : limit + 0.5;
+      if (tempvalue < limit) {
+        if (relay) 
+        {
+          digitalWrite(PIN_RELAY1, HIGH);
+          relay = false;
+        }
+      } 
+      else 
+      {
+        if (!relay) 
+        {
+          digitalWrite(PIN_RELAY1, LOW);
+          relay = true;
+        }
       }
-      sprintf(log, "freezeing, tempvalue: %sC relay: \t%s", lcdtemp, (digitalRead(PIN_RELAY1) == LOW) ? "On" : "Off");
+      sprintf(log, "freezeing, tempvalue: %sC relay: \t%s, current limit temp: %f", lcdtemp, (digitalRead(PIN_RELAY1) == LOW) ? "On" : "Off", limit);
       Serial.println(log);
       return;
     }
-    if (tempvalue > templimit) {
-      digitalWrite(PIN_RELAY1, HIGH);
-    } else {
-      digitalWrite(PIN_RELAY1, LOW);
+    limit = relay ? limit + 0.25 : limit - 0.25;
+    if (tempvalue > limit) {
+      if (relay) 
+      {
+        digitalWrite(PIN_RELAY1, HIGH);
+        relay = false;
+      }
+    }
+    else 
+    {
+      if (!relay) 
+      {
+        digitalWrite(PIN_RELAY1, LOW);
+        relay = true;
+      }
     }
     if(stage == 1){
       set_time = stage1_time_h * 3600 + stage1_time_m * 60;
