@@ -39,7 +39,7 @@ int adc_key_val[5] = { 30, 150, 360, 535, 760 };
 bool relay = false;
 bool debug = false;
 int stage = STAGE_INVALIDA;
-int sub_stage = -1;
+int sub_stage = 0;
 bool start_work = false;
 float last_temp = 0;
 tmElements_t start_tm;
@@ -114,8 +114,8 @@ float get_temperature() {
 }
 
 char* format_temperature(char *lcdtemp, float temp) {
-  dtostrf(temp, 3, 2, lcdtemp);
-  return lcdtemp;
+    dtostrf(temp, 3, 2, lcdtemp);
+    return lcdtemp;
 }
 
 /*********************************************
@@ -131,8 +131,7 @@ void turn_off_debug() {
     }
 }
 
-void turn_on_debug()
-{
+void turn_on_debug() {
     if (!debug)
     {
         digitalWrite(PIN_DEBUG, HIGH);
@@ -206,110 +205,46 @@ void lcd_print_line2(char* line) {
  *
  ********************************************/
 
-void display_stage_init_LCD() {
-    char line1[16];
-    char line2[16];
+// TODO: Maybe LCD will be twinkle
+void display_set_stage() {
+    display_set_stage_line1();
+    display_set_stage_line2();
+}
+
+void display_set_stage_line1() {
+    char line[16];
+    sprintf(line, "%d        sub: %d ", stage, sub_stage);
+    lcd_print_line1(line);
+}
+
+void display_set_stage_line2() {
     switch (stage) {
         case STAGE_0:
-            sprintf(line1, "0                ");
-            lcd_print_line1(line1);
-            sprintf(line2, "Set temp %02d C   ", stage0_temp);
-            lcd_print_line2(line2);
+            display_set_temperature(stage0_temp);
             break;
         case STAGE_1:
-            sprintf(line1, "1                ");
-            lcd_print_line1(line1);
-            sprintf(line2, "Set temp %02d C   ", stage1_temp);
-            lcd_print_line2(line2);
+            if (sub_stage == 0) {
+                display_set_temperature(stage1_temp);
+            } else if (sub_stage == 1) {
+                display_set_time(stage1_time_h, stage1_time_m);
+            } else if (sub_stage == 2) {
+                display_set_time(stage1_time_h, stage1_time_m);
+            }
             break;
         case STAGE_2:
-            sprintf(line1, "2                 ");
-            lcd_print_line1(line1);
-            sprintf(line2, "Set temp %02d C   ", stage2_temp);
-            lcd_print_line2(line2);
+            display_set_temperature(stage2_temp);
             break;
         case STAGE_3:
-            sprintf(line1, "3                 ");
-            lcd_print_line1(line1);
-            sprintf(line2, "Set time (%02d):%02d", stage3_time_h, stage3_time_m);
-            lcd_print_line2(line2);
+            if (sub_stage == 0) {
+                display_set_time(stage3_time_h, stage3_time_m);
+            } else if (sub_stage == 1) {
+                display_set_time(stage3_time_h, stage3_time_m);
+            }
             break;
         case STAGE_4:
-            sprintf(line1, "4                 ");
-            lcd_print_line1(line1);
-            sprintf(line2, "Set temp %02d C   ", stage4_temp);
-            lcd_print_line2(line2);
+            display_set_temperature(stage4_temp);
             break;
     }
-}
-
-int switch_stage() {
-    return ++stage % MAX_STAGE_COUNT;
-}
-
-// TODO: 2
-int switch_sub_stage(LCD4Bit_mod lcd, int sub_stage) {
-    char line1[16];
-    char line2[16];
-    switch(sub_stage) {
-        case -1:
-        case 2:
-            if (stage == STAGE_1) {
-                sprintf(line1, "1                ");
-                lcd_print_line1(line1);
-                lcd.cursorTo(2, 0);
-                sprintf(line2, "Set temp %02d C   ", stage1_temp);
-                lcd.printIn(line2);
-            } else if (stage == STAGE_3) {
-                lcd.cursorTo(1, 0);
-                lcd.printIn("3                 ");
-                lcd.cursorTo(2, 0);
-                sprintf(line2, "Set time (%02d):%02d", stage3_time_h, stage3_time_m);
-                lcd.printIn(line2);
-            }
-            sub_stage = 0;
-            break;
-        case 0:
-            if (stage == STAGE_1) {
-                lcd.cursorTo(1, 0);
-                sprintf(line1, "1 temp set %02d C ", stage1_temp);
-                lcd.printIn(line1);
-                lcd.cursorTo(2, 0);
-                sprintf(line2, "Set time (%02d):%02d  ", stage1_time_h, stage1_time_m);
-                lcd.printIn(line2);
-                sub_stage ++;
-            } else if (stage == STAGE_3) {
-                lcd.cursorTo(1, 0);
-                lcd.printIn("3                ");
-                lcd.cursorTo(2, 0);
-                sprintf(line2, "Set time %02d:(%02d)  ", stage3_time_h, stage3_time_m);
-                lcd.printIn(line2);
-                sub_stage += 2;
-            }
-            break;
-        case 1:
-            if (stage == STAGE_1) {
-                lcd.cursorTo(1, 0);
-                sprintf(line1, "1 temp set %02d C ", stage1_temp);
-                lcd.printIn(line1);
-                lcd.cursorTo(2, 0);
-                sprintf(line2, "Set time %02d:(%02d)  ", stage1_time_h, stage1_time_m);
-                lcd.printIn(line2);
-                sub_stage ++;
-            }
-            break;
-    }
-    return sub_stage;
-}
-
-int loop_value(int value, int increment, int start_value, int end_value) {
-    int temp = value + increment;
-    if (temp > end_value) {
-        temp = start_value;
-    } else if (temp < start_value) {
-        temp = end_value;
-    }
-    return temp;
 }
 
 void display_set_temperature(int target_temp) {
@@ -324,40 +259,56 @@ void display_set_time(int time_hour, int time_min) {
     lcd_print_line2(line);
 }
 
+int switch_stage(int stage) {
+    sub_stage = 0;
+    return ++stage % MAX_STAGE_COUNT;
+}
+
+int switch_sub_stage(int sub_stage) {
+    if (stage == STAGE_1) {
+        sub_stage = ++sub_stage % 2;
+    } else if (stage == STAGE_3) {
+        sub_stage = ++sub_stage % 1;
+    }
+    return sub_stage;
+}
+
+int loop_value(int value, int increment, int start_value, int end_value) {
+    int temp = value + increment;
+    if (temp > end_value) {
+        temp = start_value;
+    } else if (temp < start_value) {
+        temp = end_value;
+    }
+    return temp;
+}
+
 void setting(int plus_minus) {
     switch (stage) {
         case STAGE_0:
             stage0_temp = loop_value(stage0_temp, (1 * plus_minus), 0, 100);
-            display_set_temperature(stage0_temp);
             break;
         case STAGE_1:
             if (sub_stage == 0) {
                 stage1_temp = loop_value(stage1_temp, (1 * plus_minus), 0, 100);
-                display_set_temperature(stage1_temp);
             } else if (sub_stage == 1) {
                 stage1_time_h = loop_value(stage1_time_h, (1 * plus_minus), 0, 99);
-                display_set_time(stage1_time_h, stage1_time_m);
             } else if (sub_stage == 2) {
                 stage1_time_m = loop_value(stage1_time_m, (1 * plus_minus), 0, 59);
-                display_set_time(stage1_time_h, stage1_time_m);
             }
             break;
         case STAGE_2:
             stage2_temp = loop_value(stage2_temp, (1 * plus_minus), 0, 100);
-            display_set_temperature(stage2_temp);
             break;
         case STAGE_3:
             if (sub_stage == 0) {
                 stage3_time_h = loop_value(stage3_time_h, (1 * plus_minus), 0, 99);
-                display_set_time(stage3_time_h, stage3_time_m);
-            } else if (sub_stage == 2) {
+            } else if (sub_stage == 1) {
                 stage3_time_m = loop_value(stage3_time_m, (15 * plus_minus), 0, 59);
-                display_set_time(stage3_time_h, stage3_time_m);
             }
             break;
         case STAGE_4:
             stage4_temp = loop_value(stage4_temp, (1 * plus_minus), 0, 100);
-            display_set_temperature(stage4_temp);
             break;
     }
 }
@@ -435,7 +386,7 @@ void work() {
             check_result = check_temperature(tempvalue, (float) stage1_temp, HEATER_TEMPERATURE_OVERFLOW, true);
             if (check_time(pass_time, stage1_time_h, stage1_time_m)) {
                 turn_off_relay();
-                stage = switch_stage();
+                stage = switch_stage(stage);
                 get_time(start_tm);
             }
             break;
@@ -497,20 +448,22 @@ void loop() {
         case KEY_UP:
             start_work = false;
             setting(1);
+            display_set_stage();
             break;
         case KEY_DOWN:
             start_work = false;
             setting(-1);
+            display_set_stage();
             break;
         case KEY_SUB_STAGE:
             start_work = false;
-            sub_stage = switch_sub_stage(lcd, sub_stage);
+            sub_stage = switch_sub_stage(sub_stage);
+            display_set_stage();
             break;
         case KEY_STAGE:
             start_work = false;
-            sub_stage = 0;
-            stage = switch_stage();
-            display_stage_init_LCD();
+            stage = switch_stage(stage);
+            display_set_stage();
             break;
         default:
             break;
