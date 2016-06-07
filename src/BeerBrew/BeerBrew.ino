@@ -302,76 +302,62 @@ int switch_sub_stage(LCD4Bit_mod lcd, int sub_stage) {
     return sub_stage;
 }
 
+int loop_value(int value, int increment, int start_value, int end_value) {
+    int temp = value + increment;
+    if (temp > end_value) {
+        temp = start_value;
+    } else if (temp < start_value) {
+        temp = end_value;
+    }
+    return temp;
+}
 
-// TODO: 3
+void display_set_temperature(int target_temp) {
+    char line[16];
+    sprintf(line, "Set temp %03d C", target_temp);
+    lcd_print_line2(line);
+}
+
+void display_set_time(int time_hour, int time_min) {
+    char line[16];
+    sprintf(line, "Set time (%02d):%02d", time_hour, time_min);
+    lcd_print_line2(line);
+}
+
 void setting(int plus_minus) {
-    char line1[16];
-    char line2[16];
     switch (stage) {
-        case 0 :
-            stage0_temp += (1 * plus_minus);
-            stage0_temp = stage0_temp > 100 ? 100 : stage0_temp;
-            stage0_temp = stage0_temp < 0 ? 0 : stage0_temp;
-            lcd.cursorTo(2, 0);
-            sprintf(line2, "Set temp %02d C", stage0_temp);
-            lcd.printIn(line2);
+        case STAGE_0:
+            stage0_temp = loop_value(stage0_temp, (1 * plus_minus), 0, 100);
+            display_set_temperature(stage0_temp);
             break;
-        case 1 :
+        case STAGE_1:
             if (sub_stage == 0) {
-                stage1_temp += (1 * plus_minus);
-                stage1_temp = stage1_temp > 100 ? 100 : stage1_temp;
-                stage1_temp = stage1_temp < 0 ? 0 : stage1_temp;
-                lcd.cursorTo(2, 0);
-                sprintf(line2, "Set temp %02d C", stage1_temp);
-                lcd.printIn(line2);
-            } else if (sub_stage == 1){
-                stage1_time_h += (1 * plus_minus);
-                stage1_time_h = stage1_time_h > 99 ? 99 : stage1_time_h;
-                stage1_time_h = stage1_time_h < 0 ? 0 : stage1_time_h;
-                lcd.cursorTo(2, 0);
-                sprintf(line2, "Set time (%02d):%02d", stage1_time_h, stage1_time_m);
-                lcd.printIn(line2);
-            } else if (sub_stage == 2){
-                stage1_time_m += (1 * plus_minus);
-                stage1_time_m = stage1_time_m == 60 ? 0 : stage1_time_m;
-                stage1_time_m = stage1_time_m < 0 ? 0 : stage1_time_m;
-                lcd.cursorTo(2, 0);
-                sprintf(line2, "Set time %02d:(%02d)", stage1_time_h, stage1_time_m);
-                lcd.printIn(line2);
-            }
-            break;
-        case 2 :
-            stage2_temp += (1 * plus_minus);
-            stage2_temp = stage2_temp > 100 ? 100 : stage2_temp;
-            stage2_temp = stage2_temp < 0 ? 0 : stage2_temp;
-            lcd.cursorTo(2, 0);
-            sprintf(line2, "Set temp %02d C", stage2_temp);
-            lcd.printIn(line2);
-            break;
-        case 3 :
-            if (sub_stage == 0) {
-                stage3_time_h += (1 * plus_minus);
-                stage3_time_h = stage3_time_h > 99 ? 99 : stage3_time_h;
-                stage3_time_h = stage3_time_h < 0 ? 0 : stage3_time_h;
-                lcd.cursorTo(2, 0);
-                sprintf(line2, "Set time (%02d):%02d", stage3_time_h, stage3_time_m);
-                lcd.printIn(line2);
+                stage1_temp = loop_value(stage1_temp, (1 * plus_minus), 0, 100);
+                display_set_temperature(stage1_temp);
+            } else if (sub_stage == 1) {
+                stage1_time_h = loop_value(stage1_time_h, (1 * plus_minus), 0, 99);
+                display_set_time(stage1_time_h, stage1_time_m);
             } else if (sub_stage == 2) {
-                stage3_time_m += (15 * plus_minus);
-                stage3_time_m = stage3_time_m == 60 ? 0 : stage3_time_m;
-                stage3_time_m = stage3_time_m < 0 ? 0 : stage3_time_m;
-                lcd.cursorTo(2, 0);
-                sprintf(line2, "Set time %02d:(%02d)", stage3_time_h, stage3_time_m);
-                lcd.printIn(line2);
+                stage1_time_m = loop_value(stage1_time_m, (1 * plus_minus), 0, 59);
+                display_set_time(stage1_time_h, stage1_time_m);
             }
             break;
-        case 4 :
-            stage4_temp += (1 * plus_minus);
-            stage4_temp = stage4_temp > 100 ? 100 : stage4_temp;
-            stage4_temp = stage4_temp < 0 ? 0 : stage4_temp;
-            lcd.cursorTo(2, 0);
-            sprintf(line2, "Set temp %02d C", stage4_temp);
-            lcd.printIn(line2);
+        case STAGE_2:
+            stage2_temp = loop_value(stage2_temp, (1 * plus_minus), 0, 100);
+            display_set_temperature(stage2_temp);
+            break;
+        case STAGE_3:
+            if (sub_stage == 0) {
+                stage3_time_h = loop_value(stage3_time_h, (1 * plus_minus), 0, 99);
+                display_set_time(stage3_time_h, stage3_time_m);
+            } else if (sub_stage == 2) {
+                stage3_time_m = loop_value(stage3_time_m, (15 * plus_minus), 0, 59);
+                display_set_time(stage3_time_h, stage3_time_m);
+            }
+            break;
+        case STAGE_4:
+            stage4_temp = loop_value(stage4_temp, (1 * plus_minus), 0, 100);
+            display_set_temperature(stage4_temp);
             break;
     }
 }
@@ -401,26 +387,26 @@ bool check_temperature(float tempvalue, float templimit, float overflow, bool gr
     }
 }
 
-bool check_time(int pass_time, int hour, int min) {
+bool check_time(int pass_time, int time_hour, int time_min) {
     int set_time = 0;
-    set_time = hour * 3600 + min * 60;
+    set_time = time_hour * 3600 + time_min * 60;
     return set_time - pass_time <= 0;
 }
 
-int get_display_time(char *lcdtime, tmElements_t start, tmElements_t end) {
+int get_display_time(char *lcdtime, tmElements_t start_t, tmElements_t end_t) {
     char log[64] = "";
     int pass_time;
     int pass_hour;
     int pass_minute;
     int pass_second;
-    pass_time = (end.Hour - start.Hour) * 3600 + (end.Minute - start.Minute) * 60 + (end.Second - start.Second);
+    pass_time = (end_t.Hour - start_t.Hour) * 3600 + (end_t.Minute - start_t.Minute) * 60 + (end_t.Second - start_t.Second);
     pass_hour = floor(pass_time / 3600);
     pass_minute = floor((pass_time - (pass_hour * 3600)) / 60);
     pass_second = pass_time - pass_hour * 3600 - pass_minute * 60;
     lcdtime = build_time_str(lcdtime, pass_hour, 2, ':');
     lcdtime = build_time_str(lcdtime, pass_minute , 2, ':');
     lcdtime = build_time_str(lcdtime, pass_second, 2, ' ');
-    sprintf(log, "Time: %02d:%02d:%02d\tpassed: %d", end.Hour, end.Minute, end.Second, pass_time);
+    sprintf(log, "Time: %02d:%02d:%02d\tpassed: %d", end_t.Hour, end_t.Minute, end_t.Second, pass_time);
     Serial.println(log);
     return pass_time;
 }
