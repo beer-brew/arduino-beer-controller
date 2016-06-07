@@ -33,6 +33,8 @@ LCD4Bit_mod lcd = LCD4Bit_mod(2);
 
 // Global variables
 int NUM_KEYS = 5;
+float HEATER_TEMPERATURE_OVERFLOW = 0.25;
+float FROZEN_TEMPERATURE_OVERFLOW = 0.5;
 int adc_key_val[5] = { 30, 150, 360, 535, 760 };
 bool relay = false;
 bool debug = false;
@@ -164,6 +166,10 @@ void turn_off_relay() {
  *
  ********************************************/
 
+int get_time(tmElements_t time) {
+    return RTC.read(time);
+}
+
 char* build_time_str(char* p, int value, int length, char sepreator) {
     int i = 0;
     if (value < 10 && length == 2) {
@@ -185,13 +191,13 @@ char* build_time_str(char* p, int value, int length, char sepreator) {
  ********************************************/
 
 void lcd_print_line1(char* line) {
-  lcd.cursorTo(1, 0);
-  lcd.printIn(line);
+    lcd.cursorTo(1, 0);
+    lcd.printIn(line);
 }
 
 void lcd_print_line2(char* line) {
-  lcd.cursorTo(2, 0);
-  lcd.printIn(line);
+    lcd.cursorTo(2, 0);
+    lcd.printIn(line);
 }
 
 /*********************************************
@@ -281,7 +287,7 @@ int switch_sub_stage(LCD4Bit_mod lcd, int sub_stage) {
                 sub_stage += 2;
             }
             break;
-        case 1 :
+        case 1:
             if (stage == STAGE_1) {
                 lcd.cursorTo(1, 0);
                 sprintf(line1, "1 temp set %02d C ", stage1_temp);
@@ -372,8 +378,8 @@ void setting(int plus_minus) {
 
 void display_current_temperature(float current_temp, int target_temp) {
     char lcdtemp[16] = "";
-    format_temperature(lcdtemp, current_temp);
     char line[16];
+    format_temperature(lcdtemp, current_temp);
     sprintf(line, "s:%d %sC->%02dC", stage, lcdtemp, target_temp);
     lcd_print_line1(line);
 }
@@ -384,36 +390,37 @@ void display_current_time(char *current_time) {
     lcd_print_line2(line);
 }
 
-void check_temperature(float tempvalue, float templimit) {
-    char log[64] = "";
-    // FIXME: over 100C water temperature overflow?
-    templimit = relay ? templimit + 0.25 : templimit - 0.25;
-    if (tempvalue > templimit) {
-        turn_off_relay();
+bool check_temperature(float tempvalue, float templimit, float overflow, bool greater_than) {
+    if (greater_than) {
+        // FIXME: over 100C water temperature overflow?
+        templimit = relay ? templimit + overflow : templimit - overflow;
+        return tempvalue > templimit;
     } else {
-        turn_on_relay();
+        templimit = relay ? templimit - overflow : templimit + overflow;
+        return tempvalue < templimit;
     }
-    sprintf(log, "stage: %d, relay: \t%s", stage, relay ? "On" : "Off");
-    Serial.println(log);
 }
 
-int get_current_time(char *lcdtime) {
-    int pass_time;
-    tmElements_t tm;
+bool check_time(int pass_time, int hour, int min) {
+    int set_time = 0;
+    set_time = hour * 3600 + min * 60;
+    return set_time - pass_time <= 0;
+}
+
+int get_display_time(char *lcdtime, tmElements_t start, tmElements_t end) {
     char log[64] = "";
+    int pass_time;
     int pass_hour;
     int pass_minute;
     int pass_second;
-    if (RTC.read(tm)) {
-        pass_time = (tm.Hour - start_tm.Hour) * 3600 + (tm.Minute - start_tm.Minute) * 60 + (tm.Second - start_tm.Second);
-        pass_hour = floor(pass_time / 3600);
-        pass_minute = floor((pass_time - (pass_hour * 3600)) / 60);
-        pass_second = pass_time - pass_hour * 3600 - pass_minute * 60;
-        lcdtime = build_time_str(lcdtime, pass_hour, 2, ':');
-        lcdtime = build_time_str(lcdtime, pass_minute , 2, ':');
-        lcdtime = build_time_str(lcdtime, pass_second, 2, ' ');
-    }
-    sprintf(log, "Time: %02d:%02d:%02d\t%d", tm.Hour, tm.Minute, tm.Second, pass_time);
+    pass_time = (end.Hour - start.Hour) * 3600 + (end.Minute - start.Minute) * 60 + (end.Second - start.Second);
+    pass_hour = floor(pass_time / 3600);
+    pass_minute = floor((pass_time - (pass_hour * 3600)) / 60);
+    pass_second = pass_time - pass_hour * 3600 - pass_minute * 60;
+    lcdtime = build_time_str(lcdtime, pass_hour, 2, ':');
+    lcdtime = build_time_str(lcdtime, pass_minute , 2, ':');
+    lcdtime = build_time_str(lcdtime, pass_second, 2, ' ');
+    sprintf(log, "Time: %02d:%02d:%02d\tpassed: %d", end.Hour, end.Minute, end.Second, pass_time);
     Serial.println(log);
     return pass_time;
 }
@@ -422,55 +429,56 @@ void work() {
     float tempvalue;
     char lcdtime[32] = "";
     int pass_time = 0;
-    int set_time = 0;
     char line[16];
-    float templimit;
     char log[64] = "";
+    tmElements_t tm;
+    bool check_result = false;
     tempvalue = get_temperature();
-    pass_time = get_current_time(lcdtime);
+    get_time(tm);
+    pass_time = get_display_time(lcdtime, start_tm, tm);
     switch(stage) {
         case STAGE_0:
             display_current_temperature(tempvalue, stage0_temp);
             display_current_time(lcdtime);
-            check_temperature(tempvalue, (float) stage0_temp);
+            check_result = check_temperature(tempvalue, (float) stage0_temp, HEATER_TEMPERATURE_OVERFLOW, true);
             break;
         case STAGE_1:
             display_current_temperature(tempvalue, stage1_temp);
             sprintf(line, "%s%02dh:%02dm", lcdtime, stage1_time_h, stage1_time_m);
             lcd_print_line2(line);
-            check_temperature(tempvalue, (float) stage1_temp);
-            set_time = stage1_time_h * 3600 + stage1_time_m * 60;
-            if(set_time - pass_time <= 0) {
+            check_result = check_temperature(tempvalue, (float) stage1_temp, HEATER_TEMPERATURE_OVERFLOW, true);
+            if (check_time(pass_time, stage1_time_h, stage1_time_m)) {
                 turn_off_relay();
                 stage = switch_stage();
-                RTC.read(start_tm);
+                get_time(start_tm);
             }
             break;
         case STAGE_2:
             display_current_temperature(tempvalue, stage2_temp);
             display_current_time(lcdtime);
-            check_temperature(tempvalue, (float) stage2_temp);
+            check_result = check_temperature(tempvalue, (float) stage2_temp, HEATER_TEMPERATURE_OVERFLOW, true);
             break;
         case STAGE_3:
             display_current_temperature(tempvalue, stage3_temp);
             display_current_time(lcdtime);
-            check_temperature(tempvalue, (float) stage3_temp);
+            check_result = check_temperature(tempvalue, (float) stage3_temp, HEATER_TEMPERATURE_OVERFLOW, true);
             break;
         case STAGE_4:
             display_current_temperature(tempvalue, stage4_temp);
             sprintf(line, "Freezing ");
             lcd_print_line2(line);
-            templimit = (float) stage4_temp;
-            templimit = relay ? templimit - 0.5 : templimit + 0.5;
-            if (tempvalue < templimit) {
-                turn_off_relay();
-            } else {
-                turn_on_relay();
-            }
-            sprintf(log, "freezeing, relay: \t%s, current limit temp: %f", relay ? "On" : "Off", templimit);
+            check_result = check_temperature(tempvalue, (float) stage4_temp, FROZEN_TEMPERATURE_OVERFLOW, false);
+            sprintf(log, "freezeing, relay: \t%s, current limit temp: %d", relay ? "On" : "Off", stage4_temp);
             Serial.println(log);
             break;
     }
+    if (check_result) {
+        turn_off_relay();
+    } else {
+        turn_on_relay();
+    }
+    sprintf(log, "stage: %d, relay: \t%s", stage, relay ? "On" : "Off");
+    Serial.println(log);
 }
 /*********************************************
  *
@@ -498,7 +506,7 @@ void loop() {
     switch (key) {
         case KEY_START:
             start_work = true;
-            RTC.read(start_tm);
+            get_time(start_tm);
             break;
         case KEY_UP:
             start_work = false;
