@@ -7,17 +7,20 @@
 #include <OneWire.h>
 #include <DallasTemperature.h>
 
+// This is a debug Marco, open it will print some useful information in console.
+//#define DEBUG
+
 // Data wire is plugged into port 2 on the Arduino & Temperature Sensor
 #define ONE_WIRE_BUS    2
 #define PIN_RELAY       3
 #define PIN_DEBUG       13
 
-#define STAGE_INVALIDA -1
-#define STAGE_0         0
-#define STAGE_1         1
-#define STAGE_2         2
-#define STAGE_3         3
-#define STAGE_4         4
+#define STAGE_INVALID       -1
+#define STAGE_MASHING_IN    0
+#define STAGE_MASHING       1
+#define STAGE_MASHING_OUT   2
+#define STAGE_BOIL          3
+#define STAGE_FERMERTATION  4
 #define MAX_STAGE_COUNT 5
 
 enum KEY_VALUE {KEY_INVALID = -1, KEY_START, KEY_UP, KEY_DOWN, KEY_SUB_STAGE, KEY_STAGE};
@@ -38,8 +41,8 @@ float FROZEN_TEMPERATURE_OVERFLOW = 0.5;
 int adc_key_val[5] = { 30, 150, 360, 535, 760 };
 bool relay = false;
 bool debug = false;
-int stage = STAGE_INVALIDA;
-int sub_stage = STAGE_INVALIDA;
+int stage = STAGE_INVALID;
+int sub_stage = STAGE_INVALID;
 bool start_work = false;
 float last_temp = 0;
 tmElements_t start_tm;
@@ -85,6 +88,13 @@ KEY_VALUE get_key() {
     delay(10);
     key2 = convert_key();
     if (key1 == key2) {
+#ifdef DEBUG
+    if (key1 != KEY_INVALID) {
+        char log[64] = "";
+        sprintf(log, "Input key: %d", key1);
+        Serial.println(log);
+    }
+#endif
         return key1;
     }
     else {
@@ -113,7 +123,7 @@ float get_temperature() {
     }
 }
 
-char* format_temperature(char *lcdtemp, float temp) {
+char* format_temperature(char* lcdtemp, float temp) {
     dtostrf(temp, 3, 2, lcdtemp);
     return lcdtemp;
 }
@@ -165,10 +175,6 @@ void turn_off_relay() {
  *
  ********************************************/
 
-int get_time(tmElements_t time) {
-    return RTC.read(time);
-}
-
 char* build_time_str(char* p, int value, int length, char sepreator) {
     int i = 0;
     if (value < 10 && length == 2) {
@@ -178,8 +184,10 @@ char* build_time_str(char* p, int value, int length, char sepreator) {
     }
     itoa(value, p, 10);
     p += (length - i);
-    *p = sepreator;
-    p ++;
+    if (sepreator != ' ') {
+        *p = sepreator;
+        p ++;
+    }
     return p;
 }
 
@@ -206,33 +214,53 @@ void lcd_print_line2(char* line) {
  ********************************************/
 
 void display_set_temperature(int target_temp) {
-    char line[16];
-    sprintf(line, "Set temp  %03d C", target_temp);
+    char line[17];
+    sprintf(line, "Temperature:%3dC", target_temp);
     lcd_print_line2(line);
 }
 
 void display_set_time(int time_hour, int time_min, bool setHour) {
-    char line[16];
+    char line[17];
     if (setHour) {
-        sprintf(line, "Set time(%02d):%02d", time_hour, time_min);  
+        sprintf(line, "Set time (%02d):%02d", time_hour, time_min);  
     } else {
-        sprintf(line, "Set time%02d:(%02d)", time_hour, time_min);
+        sprintf(line, "Set time %02d:(%02d)", time_hour, time_min);
     }
     lcd_print_line2(line);
 }
 
 void display_set_stage_line1() {
-    char line[16];
-    sprintf(line, "%d        sub: %d", stage, sub_stage);
-    lcd_print_line1(line);
+    char line[17];
+    switch (stage) {
+        case STAGE_MASHING_IN:
+            sprintf(line, "%d) Mashing in   ", stage, sub_stage);
+            lcd_print_line1(line);
+            break;
+        case STAGE_MASHING:
+            sprintf(line, "%d) Mashing    :%d", stage, sub_stage);
+            lcd_print_line1(line);
+            break;
+        case STAGE_MASHING_OUT:
+            sprintf(line, "%d) Mashing out  ", stage, sub_stage);
+            lcd_print_line1(line);
+            break;
+        case STAGE_BOIL:
+            sprintf(line, "%d) Boil       :%d", stage, sub_stage);
+            lcd_print_line1(line);
+            break;
+        case STAGE_FERMERTATION:
+            sprintf(line, "%d) Fermertation ", stage, sub_stage);
+            lcd_print_line1(line);
+        break;
+    }
 }
 
 void display_set_stage_line2() {
     switch (stage) {
-        case STAGE_0:
+        case STAGE_MASHING_IN:
             display_set_temperature(stage0_temp);
             break;
-        case STAGE_1:
+        case STAGE_MASHING:
             if (sub_stage == 0) {
                 display_set_temperature(stage1_temp);
             } else if (sub_stage == 1) {
@@ -241,17 +269,17 @@ void display_set_stage_line2() {
                 display_set_time(stage1_time_h, stage1_time_m, false);
             }
             break;
-        case STAGE_2:
+        case STAGE_MASHING_OUT:
             display_set_temperature(stage2_temp);
             break;
-        case STAGE_3:
+        case STAGE_BOIL:
             if (sub_stage == 0) {
                 display_set_time(stage3_time_h, stage3_time_m, true);
             } else if (sub_stage == 1) {
                 display_set_time(stage3_time_h, stage3_time_m, false);
             }
             break;
-        case STAGE_4:
+        case STAGE_FERMERTATION:
             display_set_temperature(stage4_temp);
             break;
     }
@@ -269,9 +297,9 @@ int switch_stage(int stage) {
 }
 
 int switch_sub_stage(int sub_stage) {
-    if (stage == STAGE_1) {
+    if (stage == STAGE_MASHING) {
         sub_stage = ++sub_stage % 3;
-    } else if (stage == STAGE_3) {
+    } else if (stage == STAGE_BOIL) {
         sub_stage = ++sub_stage % 2;
     }
     return sub_stage;
@@ -289,10 +317,10 @@ int loop_value(int value, int increment, int start_value, int end_value) {
 
 void setting(int plus_minus) {
     switch (stage) {
-        case STAGE_0:
+        case STAGE_MASHING_IN:
             stage0_temp = loop_value(stage0_temp, (1 * plus_minus), 0, 100);
             break;
-        case STAGE_1:
+        case STAGE_MASHING:
             if (sub_stage == 0) {
                 stage1_temp = loop_value(stage1_temp, (1 * plus_minus), 0, 100);
             } else if (sub_stage == 1) {
@@ -301,33 +329,33 @@ void setting(int plus_minus) {
                 stage1_time_m = loop_value(stage1_time_m, (1 * plus_minus), 0, 59);
             }
             break;
-        case STAGE_2:
+        case STAGE_MASHING_OUT:
             stage2_temp = loop_value(stage2_temp, (1 * plus_minus), 0, 100);
             break;
-        case STAGE_3:
+        case STAGE_BOIL:
             if (sub_stage == 0) {
                 stage3_time_h = loop_value(stage3_time_h, (1 * plus_minus), 0, 99);
             } else if (sub_stage == 1) {
                 stage3_time_m = loop_value(stage3_time_m, (15 * plus_minus), 0, 59);
             }
             break;
-        case STAGE_4:
+        case STAGE_FERMERTATION:
             stage4_temp = loop_value(stage4_temp, (1 * plus_minus), 0, 100);
             break;
     }
 }
 
 void display_current_temperature(float current_temp, int target_temp) {
-    char lcdtemp[16] = "";
-    char line[16];
+    char lcdtemp[7] = "";
+    char line[17];
     format_temperature(lcdtemp, current_temp);
-    sprintf(line, "s:%d %sC->%02dC", stage, lcdtemp, target_temp);
+    sprintf(line, "s:%d %sC->%3dC", stage, lcdtemp, target_temp);
     lcd_print_line1(line);
 }
 
-void display_current_time(char *current_time) {
-    char line[16];
-    sprintf(line, "%s        ", current_time);
+void display_current_time(char* current_time) {
+    char line[17];
+    sprintf(line, "Time:   %s", current_time);
     lcd_print_line2(line);
 }
 
@@ -348,75 +376,68 @@ bool check_time(int pass_time, int time_hour, int time_min) {
     return set_time - pass_time <= 0;
 }
 
-int get_display_time(char *lcdtime, tmElements_t start_t, tmElements_t end_t) {
-    char log[64] = "";
-    int pass_time;
+void get_display_time(tmElements_t start_t, tmElements_t end_t, int* pass_time, char* lcdtime) {
     int pass_hour;
     int pass_minute;
     int pass_second;
-    pass_time = (end_t.Hour - start_t.Hour) * 3600 + (end_t.Minute - start_t.Minute) * 60 + (end_t.Second - start_t.Second);
-    pass_hour = floor(pass_time / 3600);
-    pass_minute = floor((pass_time - (pass_hour * 3600)) / 60);
-    pass_second = pass_time - pass_hour * 3600 - pass_minute * 60;
-    sprintf(log, "Time1: %s",lcdtime);
+    char *pTime = lcdtime;
+    
+    *pass_time = (end_t.Hour - start_t.Hour) * 3600 + (end_t.Minute - start_t.Minute) * 60 + (end_t.Second - start_t.Second);
+    pass_hour = floor(*pass_time / 3600);
+    pass_minute = floor((*pass_time - (pass_hour * 3600)) / 60);
+    pass_second = *pass_time - pass_hour * 3600 - pass_minute * 60;
+    pTime = build_time_str(pTime, pass_hour, 2, ':');
+    pTime = build_time_str(pTime, pass_minute , 2, ':');
+    pTime = build_time_str(pTime, pass_second, 2, ' ');
+#ifdef DEBUG
+    char log[64] = "";
+    sprintf(log, "Time: %02d:%02d:%02d\tpassed: %d", end_t.Hour, end_t.Minute, end_t.Second, *pass_time);
     Serial.println(log);
-    lcdtime = build_time_str(lcdtime, pass_hour, 2, ':');
-    sprintf(log, "Time2: %s",lcdtime);
-    Serial.println(log);
-    lcdtime = build_time_str(lcdtime, pass_minute , 2, ':');
-    lcdtime = build_time_str(lcdtime, pass_second, 2, ' ');
-    sprintf(log, "Time3: %s",lcdtime);
-    Serial.println(log);
-    sprintf(log, "Time: %02d:%02d:%02d\tpassed: %d", end_t.Hour, end_t.Minute, end_t.Second, pass_time);
-    Serial.println(log);
-    return pass_time;
+#endif
 }
 
 void work() {
     float tempvalue;
-    char lcdtime[16] = "";
+    char lcdtime[17] = "";
     int pass_time = 0;
-    char line[16];
-    char log[64] = "";
+    char line[17];
     tmElements_t tm;
     bool check_result = false;
     tempvalue = get_temperature();
-    get_time(tm);
-    pass_time = get_display_time(lcdtime, start_tm, tm);
+    RTC.read(tm);
+    get_display_time(start_tm, tm, &pass_time, lcdtime);
     switch(stage) {
-        case STAGE_0:
+        case STAGE_MASHING_IN:
             display_current_temperature(tempvalue, stage0_temp);
             display_current_time(lcdtime);
             check_result = check_temperature(tempvalue, (float) stage0_temp, HEATER_TEMPERATURE_OVERFLOW, true);
             break;
-        case STAGE_1:
+        case STAGE_MASHING:
             display_current_temperature(tempvalue, stage1_temp);
-            sprintf(line, "%s%02dh:%02dm", lcdtime, stage1_time_h, stage1_time_m);
+            sprintf(line, "%s%02dh:%0.2dm", lcdtime, stage1_time_h, stage1_time_m);
             lcd_print_line2(line);
             check_result = check_temperature(tempvalue, (float) stage1_temp, HEATER_TEMPERATURE_OVERFLOW, true);
             if (check_time(pass_time, stage1_time_h, stage1_time_m)) {
                 turn_off_relay();
                 stage = switch_stage(stage);
-                get_time(start_tm);
+                RTC.read(start_tm);
             }
             break;
-        case STAGE_2:
+        case STAGE_MASHING_OUT:
             display_current_temperature(tempvalue, stage2_temp);
             display_current_time(lcdtime);
             check_result = check_temperature(tempvalue, (float) stage2_temp, HEATER_TEMPERATURE_OVERFLOW, true);
             break;
-        case STAGE_3:
+        case STAGE_BOIL:
             display_current_temperature(tempvalue, stage3_temp);
             display_current_time(lcdtime);
             check_result = check_temperature(tempvalue, (float) stage3_temp, HEATER_TEMPERATURE_OVERFLOW, true);
             break;
-        case STAGE_4:
+        case STAGE_FERMERTATION:
             display_current_temperature(tempvalue, stage4_temp);
-            sprintf(line, "Freezing ");
+            sprintf(line, "Fermertation    ");
             lcd_print_line2(line);
             check_result = check_temperature(tempvalue, (float) stage4_temp, FROZEN_TEMPERATURE_OVERFLOW, false);
-            sprintf(log, "freezeing, relay: \t%s, current limit temp: %d", relay ? "On" : "Off", stage4_temp);
-            Serial.println(log);
             break;
     }
     if (check_result) {
@@ -424,8 +445,13 @@ void work() {
     } else {
         turn_on_relay();
     }
+#ifdef DEBUG
+    char log[64] = "";
+    sprintf(log, "pass_time:%d, lcdtime: %s", pass_time, lcdtime);
+    Serial.println(log);  
     sprintf(log, "stage: %d, relay: \t%s", stage, relay ? "On" : "Off");
     Serial.println(log);
+#endif
 }
 /*********************************************
  *
@@ -443,7 +469,7 @@ void setup() {
     lcd.clear();
     sensors.begin();
 
-    char line[16];
+    char line[17];
     sprintf(line, "beer brew");
     lcd_print_line1(line);
 }
@@ -452,8 +478,10 @@ void loop() {
     KEY_VALUE key = get_key();
     switch (key) {
         case KEY_START:
-            start_work = true;
-            get_time(start_tm);
+            if (stage != STAGE_INVALID) {
+                start_work = true;
+                RTC.read(start_tm);
+            }
             break;
         case KEY_UP:
             start_work = false;
