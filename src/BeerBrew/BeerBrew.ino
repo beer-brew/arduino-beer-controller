@@ -39,7 +39,7 @@ int adc_key_val[5] = { 30, 150, 360, 535, 760 };
 bool relay = false;
 bool debug = false;
 int stage = STAGE_INVALIDA;
-int sub_stage = 0;
+int sub_stage = STAGE_INVALIDA;
 bool start_work = false;
 float last_temp = 0;
 tmElements_t start_tm;
@@ -205,15 +205,25 @@ void lcd_print_line2(char* line) {
  *
  ********************************************/
 
-// TODO: Maybe LCD will be twinkle
-void display_set_stage() {
-    display_set_stage_line1();
-    display_set_stage_line2();
+void display_set_temperature(int target_temp) {
+    char line[16];
+    sprintf(line, "Set temp  %03d C", target_temp);
+    lcd_print_line2(line);
+}
+
+void display_set_time(int time_hour, int time_min, bool setHour) {
+    char line[16];
+    if (setHour) {
+        sprintf(line, "Set time(%02d):%02d", time_hour, time_min);  
+    } else {
+        sprintf(line, "Set time%02d:(%02d)", time_hour, time_min);
+    }
+    lcd_print_line2(line);
 }
 
 void display_set_stage_line1() {
     char line[16];
-    sprintf(line, "%d        sub: %d ", stage, sub_stage);
+    sprintf(line, "%d        sub: %d", stage, sub_stage);
     lcd_print_line1(line);
 }
 
@@ -226,9 +236,9 @@ void display_set_stage_line2() {
             if (sub_stage == 0) {
                 display_set_temperature(stage1_temp);
             } else if (sub_stage == 1) {
-                display_set_time(stage1_time_h, stage1_time_m);
+                display_set_time(stage1_time_h, stage1_time_m, true);
             } else if (sub_stage == 2) {
-                display_set_time(stage1_time_h, stage1_time_m);
+                display_set_time(stage1_time_h, stage1_time_m, false);
             }
             break;
         case STAGE_2:
@@ -236,9 +246,9 @@ void display_set_stage_line2() {
             break;
         case STAGE_3:
             if (sub_stage == 0) {
-                display_set_time(stage3_time_h, stage3_time_m);
+                display_set_time(stage3_time_h, stage3_time_m, true);
             } else if (sub_stage == 1) {
-                display_set_time(stage3_time_h, stage3_time_m);
+                display_set_time(stage3_time_h, stage3_time_m, false);
             }
             break;
         case STAGE_4:
@@ -247,16 +257,10 @@ void display_set_stage_line2() {
     }
 }
 
-void display_set_temperature(int target_temp) {
-    char line[16];
-    sprintf(line, "Set temp %03d C", target_temp);
-    lcd_print_line2(line);
-}
-
-void display_set_time(int time_hour, int time_min) {
-    char line[16];
-    sprintf(line, "Set time (%02d):%02d", time_hour, time_min);
-    lcd_print_line2(line);
+// TODO: Maybe LCD will be twinkle
+void display_set_stage() {
+    display_set_stage_line1();
+    display_set_stage_line2();
 }
 
 int switch_stage(int stage) {
@@ -266,9 +270,9 @@ int switch_stage(int stage) {
 
 int switch_sub_stage(int sub_stage) {
     if (stage == STAGE_1) {
-        sub_stage = ++sub_stage % 2;
+        sub_stage = ++sub_stage % 3;
     } else if (stage == STAGE_3) {
-        sub_stage = ++sub_stage % 1;
+        sub_stage = ++sub_stage % 2;
     }
     return sub_stage;
 }
@@ -354,9 +358,15 @@ int get_display_time(char *lcdtime, tmElements_t start_t, tmElements_t end_t) {
     pass_hour = floor(pass_time / 3600);
     pass_minute = floor((pass_time - (pass_hour * 3600)) / 60);
     pass_second = pass_time - pass_hour * 3600 - pass_minute * 60;
+    sprintf(log, "Time1: %s",lcdtime);
+    Serial.println(log);
     lcdtime = build_time_str(lcdtime, pass_hour, 2, ':');
+    sprintf(log, "Time2: %s",lcdtime);
+    Serial.println(log);
     lcdtime = build_time_str(lcdtime, pass_minute , 2, ':');
     lcdtime = build_time_str(lcdtime, pass_second, 2, ' ');
+    sprintf(log, "Time3: %s",lcdtime);
+    Serial.println(log);
     sprintf(log, "Time: %02d:%02d:%02d\tpassed: %d", end_t.Hour, end_t.Minute, end_t.Second, pass_time);
     Serial.println(log);
     return pass_time;
@@ -364,7 +374,7 @@ int get_display_time(char *lcdtime, tmElements_t start_t, tmElements_t end_t) {
 
 void work() {
     float tempvalue;
-    char lcdtime[32] = "";
+    char lcdtime[16] = "";
     int pass_time = 0;
     char line[16];
     char log[64] = "";
@@ -471,8 +481,7 @@ void loop() {
     if (start_work) {
         turn_on_debug();
         work();
-    }
-    else {
+    } else {
         turn_off_debug();
     }
 }
