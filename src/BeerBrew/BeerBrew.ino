@@ -20,7 +20,7 @@
 #define STAGE_MASHING       1
 #define STAGE_MASHING_OUT   2
 #define STAGE_BOIL          3
-#define STAGE_FERMERTATION  4
+#define STAGE_FERMENTATION  4
 #define MAX_STAGE_COUNT 5
 
 enum KEY_VALUE {KEY_INVALID = -1, KEY_START, KEY_UP, KEY_DOWN, KEY_SUB_STAGE, KEY_STAGE};
@@ -248,8 +248,8 @@ void display_set_stage_line1() {
             sprintf(line, "%d) Boil       :%d", stage, sub_stage);
             lcd_print_line1(line);
             break;
-        case STAGE_FERMERTATION:
-            sprintf(line, "%d) Fermertation ", stage, sub_stage);
+        case STAGE_FERMENTATION:
+            sprintf(line, "%d) Fermentation ", stage, sub_stage);
             lcd_print_line1(line);
         break;
     }
@@ -279,7 +279,7 @@ void display_set_stage_line2() {
                 display_set_time(stage3_time_h, stage3_time_m, false);
             }
             break;
-        case STAGE_FERMERTATION:
+        case STAGE_FERMENTATION:
             display_set_temperature(stage4_temp);
             break;
     }
@@ -339,7 +339,7 @@ void setting(int plus_minus) {
                 stage3_time_m = loop_value(stage3_time_m, (15 * plus_minus), 0, 59);
             }
             break;
-        case STAGE_FERMERTATION:
+        case STAGE_FERMENTATION:
             stage4_temp = loop_value(stage4_temp, (1 * plus_minus), 0, 100);
             break;
     }
@@ -414,7 +414,7 @@ void work() {
             break;
         case STAGE_MASHING:
             display_current_temperature(tempvalue, stage1_temp);
-            sprintf(line, "%s%02dh:%0.2dm", lcdtime, stage1_time_h, stage1_time_m);
+            sprintf(line, "%s %02dh:%0.2dm", lcdtime, stage1_time_h, stage1_time_m);
             lcd_print_line2(line);
             check_result = check_temperature(tempvalue, (float) stage1_temp, HEATER_TEMPERATURE_OVERFLOW, true);
             if (check_time(pass_time, stage1_time_h, stage1_time_m)) {
@@ -433,9 +433,9 @@ void work() {
             display_current_time(lcdtime);
             check_result = check_temperature(tempvalue, (float) stage3_temp, HEATER_TEMPERATURE_OVERFLOW, true);
             break;
-        case STAGE_FERMERTATION:
+        case STAGE_FERMENTATION:
             display_current_temperature(tempvalue, stage4_temp);
-            sprintf(line, "Fermertation    ");
+            sprintf(line, "Fermentation    ");
             lcd_print_line2(line);
             check_result = check_temperature(tempvalue, (float) stage4_temp, FROZEN_TEMPERATURE_OVERFLOW, false);
             break;
