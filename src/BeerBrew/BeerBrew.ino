@@ -7,462 +7,519 @@
 #include <OneWire.h>
 #include <DallasTemperature.h>
 
-// Data wire is plugged into port 2 on the Arduino
-#define ONE_WIRE_BUS 2
-#define PIN_RELAY1 3
-#define PIN_RELAY2 4
+// This is a debug Marco, open it will print some useful information in console.
+//#define DEBUG
+
+// Data wire is plugged into port 2 on the Arduino & Temperature Sensor
+#define ONE_WIRE_BUS    2
+#define PIN_RELAY       3
+#define PIN_DEBUG       13
+
+#define STAGE_INVALID       -1
+#define STAGE_MASHING_IN    0
+#define STAGE_MASHING       1
+#define STAGE_MASHING_OUT   2
+#define STAGE_BOIL          3
+#define STAGE_FERMENTATION  4
+#define MAX_STAGE_COUNT 5
+
+enum KEY_VALUE {KEY_INVALID = -1, KEY_START, KEY_UP, KEY_DOWN, KEY_SUB_STAGE, KEY_STAGE};
 
 // Setup a oneWire instance to communicate with any OneWire devices (not just Maxim/Dallas temperature ICs)
 OneWire oneWire(ONE_WIRE_BUS);
 
-// Pass our oneWire reference to Dallas Temperature. 
+// Pass our oneWire reference to Dallas Temperature.
 DallasTemperature sensors(&oneWire);
 //create object to control an LCD.
 //number of lines in display=1
 LCD4Bit_mod lcd = LCD4Bit_mod(2);
-int  adc_key_val[5] ={30, 150, 360, 535, 760 };
+
+// Global variables
 int NUM_KEYS = 5;
-int key = -1;
-boolean relay = false;
-int stage = -1;
-int sub_stage = -1;
+float HEATER_TEMPERATURE_OVERFLOW = 0.25;
+float FROZEN_TEMPERATURE_OVERFLOW = 0.5;
+int adc_key_val[5] = { 30, 150, 360, 535, 760 };
+bool relay = false;
+bool debug = false;
+int stage = STAGE_INVALID;
+int sub_stage = STAGE_INVALID;
+bool start_work = false;
+float last_temp = 0;
+tmElements_t start_tm;
+
+// Stage Configuration
 int stage0_temp = 68;
 int stage1_temp = 60;
 int stage1_time_h = 1;
 int stage1_time_m = 15;
 int stage2_temp = 75;
+int stage3_temp = 100;
 int stage3_time_h = 1;
 int stage3_time_m = 15;
-int stage3_temp = 100;
 int stage4_temp = 25;
-int start_work = 0;
-float last_temp = 0;
-tmElements_t start_tm;
 
+/*********************************************
+ *
+ * Keyboard
+ *
+ ********************************************/
 
-int convert_key(unsigned int input)
-{
-  int k;
-  for (k = 0; k < NUM_KEYS; k++)
-  {
-    if (input < adc_key_val[k])
-    {     
-      return k;
+/**
+ * Convert ADC value to key number
+ */
+KEY_VALUE convert_key() {
+    // read the value from the sensor;
+    unsigned int input = analogRead(0);
+    int k;
+    for (k = 0; k < NUM_KEYS; k++) {
+        if (input < adc_key_val[k]) {
+            return (enum KEY_VALUE) k;
+        }
     }
-  }
-  if (k >= NUM_KEYS)
-  {
-    return -1;     // No valid key pressed
-  }
+    return KEY_INVALID;
 }
 
-// Convert ADC value to key number
-int get_key()
-{
-  unsigned int input;
-  int key;
-  input = analogRead(0);    // read the value from the sensor  
-  key = convert_key(input);
-  delay(10);
-  input = analogRead(0);    // read the value from the sensor  
-  int key1 = convert_key(input);
-  if (key == key1)
-  {
-    return key;
-  }
-  else
-  {
-    return -1;
-  }
+/**
+ * Get key value using stabilization method
+ */
+KEY_VALUE get_key() {
+    KEY_VALUE key1, key2;
+    key1 = convert_key();
+    delay(10);
+    key2 = convert_key();
+    if (key1 == key2) {
+#ifdef DEBUG
+    if (key1 != KEY_INVALID) {
+        char log[64] = "";
+        sprintf(log, "Input key: %d", key1);
+        Serial.println(log);
+    }
+#endif
+        return key1;
+    }
+    else {
+        return KEY_INVALID;
+    }
 }
 
-float get_temp(DallasTemperature sensors)
-{
-  sensors.requestTemperatures(); // Send the command to get temperatures
-  float temp = sensors.getTempCByIndex(0);
-  if (temp > 100 || temp < 0) {
-    return last_temp;
-  } else {
-    last_temp = temp;
-    return temp;
-  }
+/*********************************************
+ *
+ * Temperature
+ *
+ ********************************************/
+
+/**
+ * Get temperature by Dallas Sensor
+ */
+float get_temperature() {
+    // Send the command to get temperatures
+    sensors.requestTemperatures();
+    float temp = sensors.getTempCByIndex(0);
+    if (temp > 100 || temp < 0) {
+        return last_temp;
+    } else {
+        last_temp = temp;
+        return temp;
+    }
 }
+
+char* format_temperature(char* lcdtemp, float temp) {
+    dtostrf(temp, 3, 2, lcdtemp);
+    return lcdtemp;
+}
+
+/*********************************************
+ *
+ * Debug
+ *
+ ********************************************/
+
+void turn_off_debug() {
+    if (debug) {
+        digitalWrite(PIN_DEBUG, LOW);
+        debug = false;
+    }
+}
+
+void turn_on_debug() {
+    if (!debug)
+    {
+        digitalWrite(PIN_DEBUG, HIGH);
+        debug = true;
+    }
+}
+
+/*********************************************
+ *
+ * Relay
+ *
+ ********************************************/
+
+void turn_on_relay() {
+    if (!relay) {
+        digitalWrite(PIN_RELAY, LOW);
+        relay = true;
+    }
+}
+
+void turn_off_relay() {
+    if (relay) {
+        digitalWrite(PIN_RELAY, HIGH);
+        relay = false;
+    }
+}
+
+/*********************************************
+ *
+ * Timer
+ *
+ ********************************************/
+
 char* build_time_str(char* p, int value, int length, char sepreator) {
-  int i = 0;
-  if(value < 10 && length == 2){
-      *p = '0';
-      p ++;
-      i ++;
-  }
-  itoa(value, p, 10); 
-  p += (length - i);
-  *p = sepreator;
-  p ++;
-  return p;
-}
-
-int switch_stage(LCD4Bit_mod lcd, int stage){  
-  char line1[16];
-  char line2[16];
-  switch (stage){
-      case -1 :
-      case 4:
-        lcd.cursorTo(1, 0);
-        lcd.printIn("0                ");
-        lcd.cursorTo(2, 0);
-        sprintf(line2, "Set temp %02d C   ", stage0_temp);
-        lcd.printIn(line2);
-        stage = 0;
-      break;
-      case 0 :
-        lcd.cursorTo(1, 0);
-        lcd.printIn("1                ");
-        lcd.cursorTo(2, 0);
-        sprintf(line2, "Set temp %02d C   ", stage1_temp);
-        lcd.printIn(line2);
-        stage ++;
-      break;
-      case 1:
-        lcd.cursorTo(1, 0);
-        lcd.printIn("2                 ");
-        lcd.cursorTo(2, 0);
-        sprintf(line2, "Set temp %02d C   ", stage2_temp);
-        lcd.printIn(line2);
-        stage ++;
-      break;
-      case 2:
-        lcd.cursorTo(1, 0);
-        lcd.printIn("3                 ");
-        lcd.cursorTo(2, 0);
-        sprintf(line2, "Set time (%02d):%02d", stage3_time_h, stage3_time_m);
-        lcd.printIn(line2);
-        stage ++;
-      break;
-      case 3 :
-        lcd.cursorTo(1, 0);
-        lcd.printIn("4                ");
-        lcd.cursorTo(2, 0);
-        sprintf(line2, "Set temp %02d C   ", stage4_temp);
-        lcd.printIn(line2);
-        stage ++;
-      break;
-
+    int i = 0;
+    value = value % 100;
+    if (value < 10 && length == 2) {
+        *p = '0';
+        p ++;
+        i ++;
     }
-    return stage;
+    itoa(value, p, 10);
+    p += (length - i);
+    if (sepreator != ' ') {
+        *p = sepreator;
+        p ++;
+    }
+    return p;
 }
 
-int switch_sub_stage(LCD4Bit_mod lcd, int sub_stage)
-{
-  char line1[16];
-  char line2[16];
-  switch(sub_stage){
-    case -1 :
-    case 2 :
-      if(stage == 1){
-        lcd.cursorTo(1, 0);
-        lcd.printIn("1                ");
-        lcd.cursorTo(2, 0);
-        sprintf(line2, "Set temp %02d C   ", stage1_temp);
-        lcd.printIn(line2);             
-      }else if(stage == 3){
-        lcd.cursorTo(1, 0);
-        lcd.printIn("3                 ");
-        lcd.cursorTo(2, 0);
-        sprintf(line2, "Set time (%02d):%02d", stage3_time_h, stage3_time_m);
-        lcd.printIn(line2);
-      }
-      sub_stage = 0;
-    break;   
-    case 0 :
-      if(stage == 1){      
-        lcd.cursorTo(1, 0);
-        sprintf(line1, "1 temp set %02d C ", stage1_temp);
-        lcd.printIn(line1);
-        lcd.cursorTo(2, 0);
-        sprintf(line2, "Set time (%02d):%02d  ", stage1_time_h, stage1_time_m);
-        lcd.printIn(line2);
-        sub_stage ++;
-      }else if(stage == 3){
-        lcd.cursorTo(1, 0);
-        lcd.printIn("3                ");
-        lcd.cursorTo(2, 0);
-        sprintf(line2, "Set time %02d:(%02d)  ", stage3_time_h, stage3_time_m);
-        lcd.printIn(line2);
-        sub_stage += 2;
-      }
-    break;
-    case 1 :
-      if(stage == 1){
-        lcd.cursorTo(1, 0);
-        sprintf(line1, "1 temp set %02d C ", stage1_temp);
-        lcd.printIn(line1);
-        lcd.cursorTo(2, 0);
-        sprintf(line2, "Set time %02d:(%02d)  ", stage1_time_h, stage1_time_m);
-        lcd.printIn(line2);
-        sub_stage ++; 
-      }
-    break;
-  }
-  return sub_stage;
+/*********************************************
+ *
+ * LCD
+ *
+ ********************************************/
+
+void lcd_print_line1(char* line) {
+    lcd.cursorTo(1, 0);
+    lcd.printIn(line);
 }
 
+void lcd_print_line2(char* line) {
+    lcd.cursorTo(2, 0);
+    lcd.printIn(line);
+}
 
+/*********************************************
+ *
+ * Business logic
+ *
+ ********************************************/
 
-void setting(int plus_minus)
-{
-  char line1[16];
-  char line2[16];
-  switch (stage){
-      case 0 :
-        stage0_temp += (1 * plus_minus);
-        stage0_temp = stage0_temp > 100 ? 100 : stage0_temp;
-        stage0_temp = stage0_temp < 0 ? 0 : stage0_temp;
-        lcd.cursorTo(2, 0);      
-        sprintf(line2, "Set temp %02d C", stage0_temp);
-        lcd.printIn(line2);
-      break;
-      case 1 :
-        if(sub_stage == 0) {
-          stage1_temp += (1 * plus_minus);
-          stage1_temp = stage1_temp > 100 ? 100 : stage1_temp;
-          stage1_temp = stage1_temp < 0 ? 0 : stage1_temp;
-          lcd.cursorTo(2, 0);
-          sprintf(line2, "Set temp %02d C", stage1_temp);
-          lcd.printIn(line2);
-        }else if(sub_stage == 1){
-          stage1_time_h += (1 * plus_minus);
-          stage1_time_h = stage1_time_h > 99 ? 99 : stage1_time_h;
-          stage1_time_h = stage1_time_h < 0 ? 0 : stage1_time_h; 
-          lcd.cursorTo(2, 0);
-          sprintf(line2, "Set time (%02d):%02d", stage1_time_h, stage1_time_m);
-          lcd.printIn(line2);
-        }else if(sub_stage == 2){
-          stage1_time_m += (1 * plus_minus);
-          stage1_time_m = stage1_time_m == 60 ? 0 : stage1_time_m;
-          stage1_time_m = stage1_time_m < 0 ? 0 : stage1_time_m;
-          lcd.cursorTo(2, 0);
-          sprintf(line2, "Set time %02d:(%02d)", stage1_time_h, stage1_time_m);
-          lcd.printIn(line2);
-        }
+void display_set_temperature(int target_temp) {
+    char line[17];
+    sprintf(line, "Temperature:%3dC", target_temp);
+    lcd_print_line2(line);
+}
+
+void display_set_time(int time_hour, int time_min, bool setHour) {
+    char line[17];
+    if (setHour) {
+        sprintf(line, "Set time (%02d):%02d", time_hour, time_min);  
+    } else {
+        sprintf(line, "Set time %02d:(%02d)", time_hour, time_min);
+    }
+    lcd_print_line2(line);
+}
+
+void display_set_stage_line1() {
+    char line[17];
+    switch (stage) {
+        case STAGE_MASHING_IN:
+            sprintf(line, "%d) Mashing in   ", stage, sub_stage);
+            lcd_print_line1(line);
+            break;
+        case STAGE_MASHING:
+            sprintf(line, "%d) Mashing    :%d", stage, sub_stage);
+            lcd_print_line1(line);
+            break;
+        case STAGE_MASHING_OUT:
+            sprintf(line, "%d) Mashing out  ", stage, sub_stage);
+            lcd_print_line1(line);
+            break;
+        case STAGE_BOIL:
+            sprintf(line, "%d) Boil       :%d", stage, sub_stage);
+            lcd_print_line1(line);
+            break;
+        case STAGE_FERMENTATION:
+            sprintf(line, "%d) Fermentation ", stage, sub_stage);
+            lcd_print_line1(line);
         break;
-      case 2 :
-        stage2_temp += (1 * plus_minus);
-        stage2_temp = stage2_temp > 100 ? 100 : stage2_temp;
-        stage2_temp = stage2_temp < 0 ? 0 : stage2_temp;
-        lcd.cursorTo(2, 0);      
-        sprintf(line2, "Set temp %02d C", stage2_temp);
-        lcd.printIn(line2);
-      break;
-      case 3 :
-        if(sub_stage == 0){
-          stage3_time_h += (1 * plus_minus);
-          stage3_time_h = stage3_time_h > 99 ? 99 : stage3_time_h;
-          stage3_time_h = stage3_time_h < 0 ? 0 : stage3_time_h; 
-          lcd.cursorTo(2, 0);
-          sprintf(line2, "Set time (%02d):%02d", stage3_time_h, stage3_time_m);
-          lcd.printIn(line2);
-        }else if(sub_stage == 2){
-          stage3_time_m += (15 * plus_minus);
-          stage3_time_m = stage3_time_m == 60 ? 0 : stage3_time_m;
-          stage3_time_m = stage3_time_m < 0 ? 0 : stage3_time_m;
-          lcd.cursorTo(2, 0);
-          sprintf(line2, "Set time %02d:(%02d)", stage3_time_h, stage3_time_m);
-          lcd.printIn(line2);
-        }
-        break;
-      case 4 :
-        stage4_temp += (1 * plus_minus);
-        stage4_temp = stage4_temp > 100 ? 100 : stage4_temp;
-        stage4_temp = stage4_temp < 0 ? 0 : stage4_temp;
-        lcd.cursorTo(2, 0);      
-        sprintf(line2, "Set temp %02d C", stage4_temp);
-        lcd.printIn(line2);
-      break;
     }
 }
 
-void work()
-{
-    tmElements_t tm;
-    float tempvalue;
-    float templimit;
-    char lcdtime[32] = "";
-    char lcdtemp[16] = "";
-    int set_time;
+void display_set_stage_line2() {
+    switch (stage) {
+        case STAGE_MASHING_IN:
+            display_set_temperature(stage0_temp);
+            break;
+        case STAGE_MASHING:
+            if (sub_stage == 0) {
+                display_set_temperature(stage1_temp);
+            } else if (sub_stage == 1) {
+                display_set_time(stage1_time_h, stage1_time_m, true);
+            } else if (sub_stage == 2) {
+                display_set_time(stage1_time_h, stage1_time_m, false);
+            }
+            break;
+        case STAGE_MASHING_OUT:
+            display_set_temperature(stage2_temp);
+            break;
+        case STAGE_BOIL:
+            if (sub_stage == 0) {
+                display_set_time(stage3_time_h, stage3_time_m, true);
+            } else if (sub_stage == 1) {
+                display_set_time(stage3_time_h, stage3_time_m, false);
+            }
+            break;
+        case STAGE_FERMENTATION:
+            display_set_temperature(stage4_temp);
+            break;
+    }
+}
+
+// TODO: Maybe LCD will be twinkle
+void display_set_stage() {
+    display_set_stage_line1();
+    display_set_stage_line2();
+}
+
+int switch_stage(int stage) {
+    sub_stage = 0;
+    return ++stage % MAX_STAGE_COUNT;
+}
+
+int switch_sub_stage(int sub_stage) {
+    if (stage == STAGE_MASHING) {
+        sub_stage = ++sub_stage % 3;
+    } else if (stage == STAGE_BOIL) {
+        sub_stage = ++sub_stage % 2;
+    }
+    return sub_stage;
+}
+
+int loop_value(int value, int increment, int start_value, int end_value) {
+    int temp = value + increment;
+    if (temp > end_value) {
+        temp = start_value;
+    } else if (temp < start_value) {
+        temp = end_value;
+    }
+    return temp;
+}
+
+void setting(int plus_minus) {
+    switch (stage) {
+        case STAGE_MASHING_IN:
+            stage0_temp = loop_value(stage0_temp, (1 * plus_minus), 0, 100);
+            break;
+        case STAGE_MASHING:
+            if (sub_stage == 0) {
+                stage1_temp = loop_value(stage1_temp, (1 * plus_minus), 0, 100);
+            } else if (sub_stage == 1) {
+                stage1_time_h = loop_value(stage1_time_h, (1 * plus_minus), 0, 99);
+            } else if (sub_stage == 2) {
+                stage1_time_m = loop_value(stage1_time_m, (1 * plus_minus), 0, 59);
+            }
+            break;
+        case STAGE_MASHING_OUT:
+            stage2_temp = loop_value(stage2_temp, (1 * plus_minus), 0, 100);
+            break;
+        case STAGE_BOIL:
+            if (sub_stage == 0) {
+                stage3_time_h = loop_value(stage3_time_h, (1 * plus_minus), 0, 99);
+            } else if (sub_stage == 1) {
+                stage3_time_m = loop_value(stage3_time_m, (15 * plus_minus), 0, 59);
+            }
+            break;
+        case STAGE_FERMENTATION:
+            stage4_temp = loop_value(stage4_temp, (1 * plus_minus), 0, 100);
+            break;
+    }
+}
+
+void display_current_temperature(float current_temp, int target_temp) {
+    char lcdtemp[7] = "";
+    char line[17];
+    format_temperature(lcdtemp, current_temp);
+    sprintf(line, "s:%d %sC->%3dC", stage, lcdtemp, target_temp);
+    lcd_print_line1(line);
+}
+
+void display_current_time(char* current_time) {
+    char line[17];
+    sprintf(line, "Time:   %s", current_time);
+    lcd_print_line2(line);
+}
+
+bool check_temperature(float tempvalue, float templimit, float overflow, bool greater_than) {
+    if (greater_than) {
+        // FIXME: over 100C water temperature overflow?
+        templimit = relay ? templimit + overflow : templimit - overflow;
+        return tempvalue > templimit;
+    } else {
+        templimit = relay ? templimit - overflow : templimit + overflow;
+        return tempvalue < templimit;
+    }
+}
+
+bool check_time(int pass_time, int time_hour, int time_min) {
+    int set_time = 0;
+    set_time = time_hour * 3600 + time_min * 60;
+    return set_time - pass_time <= 0;
+}
+
+void get_display_time(tmElements_t start_t, tmElements_t end_t, int* pass_time, char* lcdtime) {
     int pass_hour;
     int pass_minute;
     int pass_second;
-    int pass_time;
+    char *pTime = lcdtime;
+    
+    *pass_time = (end_t.Hour - start_t.Hour) * 3600 + (end_t.Minute - start_t.Minute) * 60 + (end_t.Second - start_t.Second);
+    pass_hour = floor(*pass_time / 3600);
+    pass_minute = floor((*pass_time - (pass_hour * 3600)) / 60);
+    pass_second = *pass_time - pass_hour * 3600 - pass_minute * 60;
+    pTime = build_time_str(pTime, pass_hour, 2, ':');
+    pTime = build_time_str(pTime, pass_minute , 2, ':');
+    pTime = build_time_str(pTime, pass_second, 2, ' ');
+#ifdef DEBUG
     char log[64] = "";
-    if (RTC.read(tm)) 
-    {
-      char *pTime = lcdtime;
-      pass_time = (tm.Hour - start_tm.Hour) * 3600 + (tm.Minute - start_tm.Minute) * 60 + (tm.Second - start_tm.Second);
-      pass_hour = floor(pass_time / 3600);
-      pass_minute = floor((pass_time - (pass_hour * 3600)) / 60);
-      pass_second = pass_time - pass_hour * 3600 - pass_minute * 60;
-      pTime = build_time_str(pTime, pass_hour, 2, ':');
-      pTime = build_time_str(pTime, pass_minute , 2, ':');
-      pTime = build_time_str(pTime, pass_second, 2, ' ');
-    }
-     
-    tempvalue = get_temp(sensors);
-    char line1[16];
-    char line2[16];
-    switch(stage){
-      case 0 :
-        lcd.cursorTo(1, 0);
-        dtostrf(tempvalue, 3, 2, lcdtemp);
-        sprintf(line1, "s:0 %sC->%02dC", lcdtemp, stage0_temp);
-        lcd.printIn(line1);
-        lcd.cursorTo(2, 0);
-        lcd.printIn(lcdtime);
-        lcd.printIn("        ");
-        templimit = (float) stage0_temp;
-      break;
-      case 1 :
-        lcd.cursorTo(1, 0);
-        dtostrf(tempvalue, 3, 2, lcdtemp);
-        sprintf(line1, "s:1 %sC->%02dC", lcdtemp, stage1_temp);
-        lcd.printIn(line1);
-        lcd.cursorTo(2, 0);
-        sprintf(line2, "%s%02dh:%02dm", lcdtime, stage1_time_h, stage1_time_m);
-        lcd.printIn(line2);
-        templimit = (float) stage1_temp;
-      break;
-      case 2 :
-        lcd.cursorTo(1, 0);
-        dtostrf(tempvalue, 3, 2, lcdtemp);
-        sprintf(line1, "s:2 %sC->%02dC", lcdtemp, stage2_temp);
-        lcd.printIn(line1);
-        lcd.cursorTo(2, 0);
-        lcd.printIn(lcdtime);
-        lcd.printIn("        ");
-        templimit = (float) stage2_temp;
-      break;
-      case 3 :
-        lcd.cursorTo(1, 0);
-        dtostrf(tempvalue, 3, 2, lcdtemp);
-        sprintf(line1, "s:3 %sC->%02dC", lcdtemp, stage3_temp);
-        lcd.printIn(line1);
-        lcd.cursorTo(2, 0);
-        lcd.printIn(lcdtime);
-        lcd.printIn("        ");
-        templimit = (float) stage3_temp;
-      break;      
-     case 4:
-        lcd.cursorTo(1, 0);
-        dtostrf(tempvalue, 3, 2, lcdtemp);
-        sprintf(line1, "s:4 %sC->%02dC", lcdtemp, stage4_temp);
-        lcd.printIn(line1);
-        lcd.cursorTo(2, 0);
-        lcd.printIn("Freezing ");
-        templimit = (float) stage4_temp;
-      break;      
-    }
-    float limit = templimit;
-    // todo: hard code stage4 logic here
-    if (stage == 4)
-    {
-      limit = relay ? limit - 0.5 : limit + 0.5;
-      if (tempvalue < limit) {
-        if (relay) 
-        {
-          digitalWrite(PIN_RELAY1, HIGH);
-          relay = false;
-        }
-      } 
-      else 
-      {
-        if (!relay) 
-        {
-          digitalWrite(PIN_RELAY1, LOW);
-          relay = true;
-        }
-      }
-      sprintf(log, "freezeing, tempvalue: %sC relay: \t%s, current limit temp: %f", lcdtemp, (digitalRead(PIN_RELAY1) == LOW) ? "On" : "Off", limit);
-      Serial.println(log);
-      return;
-    }
-    limit = relay ? limit + 0.25 : limit - 0.25;
-    if (tempvalue > limit) {
-      if (relay) 
-      {
-        digitalWrite(PIN_RELAY1, HIGH);
-        relay = false;
-      }
-    }
-    else 
-    {
-      if (!relay) 
-      {
-        digitalWrite(PIN_RELAY1, LOW);
-        relay = true;
-      }
-    }
-    if(stage == 1){
-      set_time = stage1_time_h * 3600 + stage1_time_m * 60;
-      if(set_time - pass_time <= 0)
-      {  
-        digitalWrite(PIN_RELAY1, HIGH);
-        stage = 2;
-        RTC.read(start_tm);
-      }
-    }
-    sprintf(log, "%d\t%02d:%02d:%02d\t%d\t%s\t%s", stage, tm.Hour, tm.Minute, tm.Second, pass_time, lcdtemp, (digitalRead(PIN_RELAY1) == LOW) ? "On" : "Off");
+    sprintf(log, "Time: %02d:%02d:%02d\tpassed: %d", end_t.Hour, end_t.Minute, end_t.Second, *pass_time);
     Serial.println(log);
+#endif
 }
 
+void work() {
+    float tempvalue;
+    char lcdtime[17] = "";
+    int pass_time = 0;
+    char line[17];
+    tmElements_t tm;
+    bool check_result = false;
+    tempvalue = get_temperature();
+    RTC.read(tm);
+    get_display_time(start_tm, tm, &pass_time, lcdtime);
+    switch(stage) {
+        case STAGE_MASHING_IN:
+            display_current_temperature(tempvalue, stage0_temp);
+            display_current_time(lcdtime);
+            check_result = check_temperature(tempvalue, (float) stage0_temp, HEATER_TEMPERATURE_OVERFLOW, true);
+            break;
+        case STAGE_MASHING:
+            display_current_temperature(tempvalue, stage1_temp);
+            sprintf(line, "%s %02dh:%0.2dm", lcdtime, stage1_time_h, stage1_time_m);
+            lcd_print_line2(line);
+            check_result = check_temperature(tempvalue, (float) stage1_temp, HEATER_TEMPERATURE_OVERFLOW, true);
+            if (check_time(pass_time, stage1_time_h, stage1_time_m)) {
+                turn_off_relay();
+                stage = switch_stage(stage);
+                RTC.read(start_tm);
+            }
+            break;
+        case STAGE_MASHING_OUT:
+            display_current_temperature(tempvalue, stage2_temp);
+            display_current_time(lcdtime);
+            check_result = check_temperature(tempvalue, (float) stage2_temp, HEATER_TEMPERATURE_OVERFLOW, true);
+            break;
+        case STAGE_BOIL:
+            display_current_temperature(tempvalue, stage3_temp);
+            display_current_time(lcdtime);
+            check_result = check_temperature(tempvalue, (float) stage3_temp, HEATER_TEMPERATURE_OVERFLOW, true);
+            break;
+        case STAGE_FERMENTATION:
+            display_current_temperature(tempvalue, stage4_temp);
+            sprintf(line, "Fermentation    ");
+            lcd_print_line2(line);
+            check_result = check_temperature(tempvalue, (float) stage4_temp, FROZEN_TEMPERATURE_OVERFLOW, false);
+            break;
+    }
+    if (check_result) {
+        turn_off_relay();
+    } else {
+        turn_on_relay();
+    }
+#ifdef DEBUG
+    char log[64] = "";
+    sprintf(log, "pass_time:%d, lcdtime: %s", pass_time, lcdtime);
+    Serial.println(log);  
+    sprintf(log, "stage: %d, relay: \t%s", stage, relay ? "On" : "Off");
+    Serial.println(log);
+#endif
+}
+/*********************************************
+ *
+ * Main function setup(); -> while(1) { loop();}
+ *
+ ********************************************/
 
 void setup() {
     Serial.begin(9600);
-    pinMode(13, OUTPUT);  //we'll use the debug LED to output a heartbeat
-    pinMode(PIN_RELAY1, OUTPUT);
-    pinMode(PIN_RELAY2, OUTPUT);
-    digitalWrite(PIN_RELAY1, HIGH);
+    pinMode(PIN_DEBUG, OUTPUT);
+    pinMode(PIN_RELAY, OUTPUT);
+    digitalWrite(PIN_RELAY, HIGH);
+    digitalWrite(PIN_DEBUG, LOW);
     lcd.init();
     lcd.clear();
-    // Start up the library
-    sensors.begin(); 
+    sensors.begin();
 
-    lcd.cursorTo(1, 0);
-    lcd.printIn("beer brew");
+    char line[17];
+    sprintf(line, "beer brew");
+    lcd_print_line1(line);
 }
 
 void loop() {
-  digitalWrite(13, HIGH);  
-  key = get_key();    // convert into key press
-  if(key == 4) //select stage
-  {
-    start_work = 0;
-    sub_stage = 0;
-    stage = switch_stage(lcd, stage);
-  }
-  if(key == 3) //select sub stage
-  {
-    start_work = 0;
-    sub_stage = switch_sub_stage(lcd, sub_stage);
-  }
-  if(key == 1)
-  {
-    setting(1);
-  }
-  if(key == 2)
-  {
-    setting(-1);
-  }
-  
-  if(key == 0)
-  {
-    start_work = 1;
-    RTC.read(start_tm);
-  }
-  
-  if(start_work == 1)
-  {
-    work();
-  }
-  //delay(1000);
-  digitalWrite(13, LOW);
+    KEY_VALUE key = get_key();
+    switch (key) {
+        case KEY_START:
+            if (stage != STAGE_INVALID) {
+                start_work = true;
+                RTC.read(start_tm);
+            }
+            break;
+        case KEY_UP:
+            if (start_work) {
+                break;
+            }
+            start_work = false;
+            setting(1);
+            display_set_stage();
+            break;
+        case KEY_DOWN:
+            if (start_work) {
+                break;
+            }
+            start_work = false;
+            setting(-1);
+            display_set_stage();
+            break;
+        case KEY_SUB_STAGE:
+            if (start_work) {
+                break;
+            }
+            start_work = false;
+            sub_stage = switch_sub_stage(sub_stage);
+            display_set_stage();
+            break;
+        case KEY_STAGE:
+            start_work = false;
+            stage = switch_stage(stage);
+            display_set_stage();
+            break;
+        default:
+            break;
+    }
+    if (start_work) {
+        turn_on_debug();
+        work();
+    } else {
+        turn_off_debug();
+    }
 }
-
