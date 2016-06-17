@@ -177,6 +177,7 @@ void turn_off_relay() {
 
 char* build_time_str(char* p, int value, int length, char sepreator) {
     int i = 0;
+    value = value % 100;
     if (value < 10 && length == 2) {
         *p = '0';
         p ++;
@@ -484,16 +485,25 @@ void loop() {
             }
             break;
         case KEY_UP:
+            if (start_work) {
+                break;
+            }
             start_work = false;
             setting(1);
             display_set_stage();
             break;
         case KEY_DOWN:
+            if (start_work) {
+                break;
+            }
             start_work = false;
             setting(-1);
             display_set_stage();
             break;
         case KEY_SUB_STAGE:
+            if (start_work) {
+                break;
+            }
             start_work = false;
             sub_stage = switch_sub_stage(sub_stage);
             display_set_stage();
